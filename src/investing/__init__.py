@@ -2,7 +2,20 @@
 
 from .filings import FilingStore, NseFinancialResultsClient
 from .fundamentals import CanonicalFactMapper, FundamentalCalculator
-from .providers import NiftyIndexUniverseProvider, YFinancePriceProvider
+from .insurance import InsuranceTaxonomyReport, InsuranceTaxonomyValidator
+from .market import MarketMetricsJoiner, snapshots_to_scorer_frame
+from .providers import (
+    NiftyIndexUniverseProvider,
+    YFinancePriceProvider,
+    nifty_benchmark_symbol,
+)
+from .research import (
+    ResearchStore,
+    WalkForwardEvaluator,
+    fiscal_quarter_end_dates,
+    records_to_frame,
+    walkforward_report,
+)
 from .scoring import LongTermScorer
 from .xbrl import NseXbrlClient, XbrlParser
 
@@ -10,7 +23,17 @@ __all__ = [
     "FilingStore",
     "CanonicalFactMapper",
     "FundamentalCalculator",
+    "InsuranceTaxonomyReport",
+    "InsuranceTaxonomyValidator",
+    "MarketMetricsJoiner",
     "LongTermScorer",
+    "ResearchStore",
+    "WalkForwardEvaluator",
+    "fiscal_quarter_end_dates",
+    "nifty_benchmark_symbol",
+    "records_to_frame",
+    "snapshots_to_scorer_frame",
+    "walkforward_report",
     "NseFinancialResultsClient",
     "NseXbrlClient",
     "NiftyIndexUniverseProvider",

@@ -27,6 +27,25 @@ class HttpSession(Protocol):
     def get(self, url: str, *, timeout: float) -> HttpResponse: ...
 
 
+NIFTY_BENCHMARK_SYMBOLS = {
+    "NIFTY 50": "^NSEI",
+    "NIFTY 100": "^CNX100",
+    "NIFTY 200": "^CNX200",
+}
+
+
+def nifty_benchmark_symbol(index_name: str) -> str:
+    """Return the Yahoo Finance ticker for an official Nifty benchmark index."""
+
+    normalized_name = index_name.strip().upper()
+    if normalized_name not in NIFTY_BENCHMARK_SYMBOLS:
+        supported = ", ".join(NIFTY_BENCHMARK_SYMBOLS)
+        raise ValueError(
+            f"Unsupported benchmark index '{index_name}'. Choose one of: {supported}"
+        )
+    return NIFTY_BENCHMARK_SYMBOLS[normalized_name]
+
+
 class NiftyIndexUniverseProvider:
     """Load current constituents from official NSE index archive files."""
 
@@ -208,6 +227,8 @@ class YFinancePriceProvider:
         normalized = symbol.strip().upper()
         if not normalized:
             raise ValueError("Symbols cannot be blank")
+        if normalized.startswith("^"):
+            return normalized
         if "." not in normalized:
             normalized = f"{normalized}.NS"
         return normalized

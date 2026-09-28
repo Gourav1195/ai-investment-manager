@@ -261,6 +261,122 @@ Remaining work:
 - Add point-in-time market price, shares outstanding, and volatility inputs.
 - Produce complete scorer rows automatically and persist walk-forward snapshots.
 
+### 2026-09-28 — Point-in-time market join and scorer integration
+
+Goal:
+
+- Calculate P/E, P/B, free-cash-flow yield, and volatility using only market data
+  available on or before the evaluation timestamp, then feed complete snapshots into
+  `LongTermScorer`.
+
+Changes:
+
+- Added `src/investing/market.py` with `MarketMetricsJoiner` and
+  `snapshots_to_scorer_frame`.
+- Extended `FundamentalSnapshot` with accounting inputs (`latest_net_income`,
+  `basic_eps`, `book_equity`) and market outputs (`price`, `shares_outstanding`,
+  `pe`, `pb`, `free_cash_flow_yield`, `volatility_1y`).
+- `FundamentalCalculator` now captures EPS and book equity for share-count and
+  valuation joins.
+- Extended the `fundamentals` CLI with `--prices`, `--fetch-prices`,
+  `--prices-start`, `--prices-end`, and `--score`.
+- Added `FundamentalSnapshot.to_scorer_row()` for direct scorer integration.
+- Added `tests/test_market_join.py`.
+
+Decisions:
+
+- Use the last adjusted close on or before the as-of calendar date for point-in-time
+  pricing. Daily bars do not carry an exchange timestamp, so intraday cutoffs are
+  not applied to price rows.
+- Derive shares outstanding as attributable net income divided by basic EPS when
+  both are present and the result is positive. P/E remains empty for non-positive
+  EPS.
+- Compute free-cash-flow yield as free cash flow divided by market capitalization.
+- Annualize one-year volatility from up to 252 prior trading days of adjusted
+  closes, requiring at least 120 observations.
+- Leave valuation and volatility fields empty until a price join is requested,
+  preserving accounting-only snapshots without lookahead bias.
+
+Remaining work:
+
+- Persist walk-forward snapshots and benchmark comparisons.
+- Validate an insurance filing source and taxonomy separately.
+
+### 2026-09-28 — Walk-forward persistence and Nifty benchmark comparison
+
+Goal:
+
+- Persist scored research snapshots across multiple evaluation dates and compare each
+  symbol's forward return with an official Nifty benchmark.
+
+Changes:
+
+- Added `src/investing/research.py` with `WalkForwardEvaluator`, `ResearchStore`, and
+  `ResearchRecord`.
+- Added SQLite tables `research_evaluations` and `research_snapshots` for idempotent
+  walk-forward persistence in the research database.
+- Added `walkforward` CLI command for multi-date evaluation, benchmark comparison, and
+  optional persistence.
+- Extended `fundamentals` with `--persist`, `--benchmark-index`, and `--forward-days`.
+- Added Nifty benchmark symbol mapping in `providers.py` and public return helpers in
+  `market.py`.
+- Fixed Yahoo index ticker handling so symbols such as `^NSEI` are not suffixed with
+  `.NS`.
+- Added `tests/test_walkforward.py` and `tests/test_market_returns.py`.
+
+Decisions:
+
+- Benchmark mapping uses Yahoo Finance index tickers: `^NSEI`, `^CNX100`, and
+  `^CNX200`.
+- Forward returns are measured from the last price on or before each as-of date through
+  the same rule at `as_of + forward_days`.
+- Excess return is stock forward return minus benchmark forward return; both may remain
+  empty when price history does not cover the horizon.
+- Re-running the same evaluation replaces prior rows for that evaluation key rather
+  than duplicating them.
+
+Remaining work:
+
+- Validate an insurance filing source and taxonomy separately.
+- Add quarterly historical snapshots and richer walk-forward reporting against a Nifty
+  benchmark portfolio.
+
+### 2026-09-28 — Insurance taxonomy validation and quarterly walk-forward reporting
+
+Goal:
+
+- Validate NSE insurance XBRL taxonomies separately from canonical scoring mappings and
+  add quarterly walk-forward snapshots with equal-weight Nifty portfolio benchmarking.
+
+Changes:
+
+- Added `src/investing/insurance.py` with life and general insurance concept sets and
+  `InsuranceTaxonomyValidator`.
+- Extended `FilingStore` with `insurance_filings` and `filing_concepts` helpers.
+- Added `filings --validate-insurance` for archived insurance concept coverage reports.
+- Added `fiscal_quarter_end_dates`, `walkforward_report`, and equal-weight portfolio
+  forward-return comparison in `research.py`.
+- Extended walk-forward persistence with `snapshot_cadence`, portfolio benchmark columns, and
+  SQLite schema migration to store version 2.
+- Extended `walkforward` CLI with quarter-range generation, `--benchmark-portfolio`,
+  `--cadence`, and `--summary`.
+- Added `tests/test_insurance.py` and expanded walk-forward and market return tests.
+
+Decisions:
+
+- Insurance remains unsupported for `FundamentalCalculator`; validation only reports
+  concept coverage and does not coerce insurers into non-financial mappings.
+- Life versus general insurance taxonomy is inferred from observed concept overlap.
+- Quarterly history uses Indian fiscal quarter-end as-of dates (Jun/Sep/Dec/Mar).
+- Portfolio benchmarking uses an equal-weight average of current Nifty constituent
+  forward returns; this is a research comparison aid and still inherits current-membership
+  survivorship limitations.
+
+Remaining work:
+
+- Promote validated insurance mappings into canonical facts after live taxonomy review.
+- Add score explanations and risk summaries grounded in saved source documents.
+
 ## Verification record
 
 ### 2026-09-28
@@ -308,6 +424,24 @@ source, and browser-compatible request headers; the repeated live check succeede
   respectively, with company-type-specific metrics.
 - Temporary SQLite databases were removed successfully after connection lifecycle repair.
 
+### 2026-09-28 — Insurance and quarterly walk-forward verification
+
+- `python -m pytest tests -q`: **44 passed**.
+- Insurance taxonomy validation, fiscal quarter date generation, portfolio benchmark
+  reporting, and persistence migration covered by new and expanded tests.
+
+### 2026-09-28 — Walk-forward verification
+
+- `python -m pytest tests -q`: **38 passed**.
+- Walk-forward scoring, benchmark excess returns, idempotent SQLite persistence, and
+  Nifty benchmark symbol mapping covered by new tests.
+
+### 2026-09-28 — Market join verification
+
+- `python -m pytest tests -q`: **31 passed**.
+- Point-in-time price selection, valuation ratios, volatility, and direct scorer
+  integration covered by `tests/test_market_join.py`.
+
 ### 2026-09-28 — Fundamental calculation verification
 
 - `python -m pytest tests -q`: **26 passed**.
@@ -339,16 +473,16 @@ source, and browser-compatible request headers; the repeated live check succeede
 
 ## Next milestones
 
-1. Join point-in-time prices and shares to calculate P/E, P/B, free-cash-flow yield, and volatility.
-2. Feed complete calculated snapshots into the scorer and persist walk-forward results.
-3. Validate an insurance filing source and taxonomy separately.
-4. Add quarterly historical snapshots and walk-forward evaluation against a Nifty benchmark.
-5. Add score explanations and risk summaries grounded in saved source documents.
-6. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
+1. Promote validated insurance mappings into canonical facts after live taxonomy review.
+2. Add score explanations and risk summaries grounded in saved source documents.
+3. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
 
 ## Known limitations
 
-- Valuation and price-discipline scoring inputs still require a point-in-time market-data join.
+- Insurance filings can be validated but are not yet mapped into canonical facts or the
+  long-term scorer.
+- Portfolio benchmarking uses current Nifty membership rather than historical index
+  constituents.
 - The initial thresholds are general-purpose and are not yet calibrated by industry.
 - `yfinance` is an unofficial personal-research source and should not become a commercial data
   dependency.

@@ -96,3 +96,18 @@ def test_yfinance_provider_normalizes_single_symbol_prices() -> None:
     assert calls[0]["tickers"] == ["RELIANCE.NS"]
     assert prices["symbol"].tolist() == ["RELIANCE", "RELIANCE"]
     assert prices["adj_close"].tolist() == [100.5, 101.5]
+
+
+def test_yfinance_provider_preserves_index_tickers() -> None:
+    calls: list[dict] = []
+
+    def download(**kwargs):
+        calls.append(kwargs)
+        return pd.DataFrame()
+
+    with pytest.raises(DataProviderError, match="no price data"):
+        YFinancePriceProvider(download=download).fetch(
+            ["^NSEI"], "2024-01-01", "2024-02-01"
+        )
+
+    assert calls[0]["tickers"] == ["^NSEI"]

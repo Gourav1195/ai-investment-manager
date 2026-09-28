@@ -270,13 +270,40 @@ class FundamentalSnapshot:
     return_on_assets: float | None = None
     gross_npa_ratio: float | None = None
     cet1_ratio: float | None = None
+    latest_net_income: float | None = None
+    basic_eps: float | None = None
+    book_equity: float | None = None
+    price_date: str | None = None
+    price: float | None = None
+    shares_outstanding: float | None = None
+    pe: float | None = None
+    pb: float | None = None
+    free_cash_flow_yield: float | None = None
+    volatility_1y: float | None = None
     calculation_version: int = CALCULATION_VERSION
+    market_join_version: int | None = None
     source_filing_keys: tuple[str, ...] = ()
 
     def to_record(self) -> dict[str, Any]:
         record = dict(self.__dict__)
         record["source_filing_keys"] = ";".join(self.source_filing_keys)
         return record
+
+    def to_scorer_row(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "roe": self.roe,
+            "roce": self.roce,
+            "operating_margin": self.operating_margin,
+            "revenue_cagr_3y": self.revenue_cagr_3y,
+            "earnings_cagr_3y": self.earnings_cagr_3y,
+            "debt_to_equity": self.debt_to_equity,
+            "interest_coverage": self.interest_coverage,
+            "pe": self.pe,
+            "pb": self.pb,
+            "free_cash_flow_yield": self.free_cash_flow_yield,
+            "volatility_1y": self.volatility_1y,
+        }
 
 
 @dataclass(frozen=True)
@@ -390,6 +417,9 @@ class FundamentalCalculator:
             roe=roe,
             revenue_cagr_3y=revenue_cagr,
             earnings_cagr_3y=earnings_cagr,
+            latest_net_income=self._float(latest_income),
+            basic_eps=self._float(duration("basic_eps")),
+            book_equity=self._float(current_equity),
         )
         if entity_type == "non_bank":
             metrics = self._non_bank_metrics(

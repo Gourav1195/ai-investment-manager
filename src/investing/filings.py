@@ -250,6 +250,43 @@ class FilingStore:
             ).fetchone()[0]
         return {"raw_snapshots": raw, "normalized_filings": normalized}
 
+    def insurance_filings(self, symbol: str) -> list[dict[str, Any]]:
+        """Return archived insurance filings that have linked XBRL documents."""
+
+        query = """
+            SELECT filing.*
+            FROM financial_result_filings AS filing
+            INNER JOIN filing_xbrl_documents AS linked
+                ON linked.filing_key = filing.filing_key
+            WHERE filing.symbol = ?
+              AND filing.entity_type = 'insurance'
+            ORDER BY filing.filing_at, filing.period_end
+        """
+        with self._connect() as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    query, (symbol.strip().upper(),)
+                ).fetchall()
+            ]
+
+    def filing_concepts(self, filing_key: str) -> set[str]:
+        """Return distinct XBRL concepts archived for a filing."""
+
+        query = """
+            SELECT DISTINCT facts.concept
+            FROM filing_xbrl_documents AS linked
+            INNER JOIN xbrl_facts AS facts
+                ON facts.document_hash = linked.document_hash
+            WHERE linked.filing_key = ?
+            ORDER BY facts.concept
+        """
+        with self._connect() as connection:
+            return {
+                str(row["concept"])
+                for row in connection.execute(query, (filing_key,)).fetchall()
+            }
+
     def pending_xbrl(
         self,
         *,

@@ -34,6 +34,28 @@ python -m src.investing.cli filings INFY --period Quarterly `
 
 python -m src.investing.cli fundamentals INFY --as-of 2024-05-31 `
   --database work/research.db --output work/infy-fundamentals.csv
+
+python -m src.investing.cli fundamentals INFY --as-of 2024-05-31 `
+  --database work/research.db --fetch-prices --prices-start 2023-01-01 `
+  --prices-end 2024-06-01 --score --output work/infy-research.csv
+
+python -m src.investing.cli fundamentals INFY --as-of 2024-05-31 `
+  --database work/research.db --fetch-prices --prices-start 2023-01-01 `
+  --prices-end 2025-06-01 --persist --benchmark-index "NIFTY 50"
+
+python -m src.investing.cli walkforward INFY HDFCBANK `
+  --as-of-dates 2023-05-31 2024-05-31 --database work/research.db `
+  --fetch-prices --prices-start 2022-01-01 --prices-end 2025-06-01 `
+  --benchmark-index "NIFTY 50" --persist --output work/walkforward.csv
+
+python -m src.investing.cli walkforward INFY `
+  --quarter-range-start 2024-04-01 --quarter-range-end 2025-03-31 `
+  --cadence quarterly --database work/research.db `
+  --fetch-prices --prices-start 2023-01-01 --prices-end 2025-06-01 `
+  --benchmark-index "NIFTY 50" --benchmark-portfolio --summary --persist
+
+python -m src.investing.cli filings HDFCLIFE --period Quarterly `
+  --database work/research.db --download-xbrl --validate-insurance
 ```
 
 The `filings` command needs no API key. It saves an immutable copy of each distinct NSE response
@@ -110,7 +132,56 @@ The score is a research prioritization tool, not a price target:
 Category weights are 30% quality, 25% growth, 20% financial strength, 20% valuation, and 5%
 price discipline. Every transform and threshold is defined in `src/investing/scoring.py`.
 
+## Market join conventions
+
+The `fundamentals` command can join point-in-time market metrics with `--prices` or
+`--fetch-prices`. Use `--score` to rank enriched snapshots directly with `LongTermScorer`.
+
+- Price: last adjusted close on or before the `--as-of` calendar date.
+- Shares outstanding: attributable net income divided by basic EPS from the latest
+  selected annual filing.
+- P/E: price divided by basic EPS; left empty when EPS is not positive.
+- P/B: market capitalization divided by book equity.
+- Free-cash-flow yield: free cash flow divided by market capitalization.
+- Volatility: annualized standard deviation of daily adjusted-close returns over up to
+  252 trading days, requiring at least 120 observations.
+
+## Walk-forward research
+
+The `walkforward` command evaluates multiple `--as-of-dates`, joins point-in-time market
+metrics, scores the cross-section, and compares each symbol's forward return with an
+official Nifty benchmark.
+
+- Benchmark indices: `NIFTY 50` (`^NSEI`), `NIFTY 100` (`^CNX100`), `NIFTY 200`
+  (`^CNX200`).
+- Forward return horizon: `--forward-days` (default `365`).
+- Persistence: `--persist` writes to `research_evaluations` and `research_snapshots` in
+  the SQLite research database. Re-running the same evaluation replaces prior rows.
+
+Output columns include `forward_return`, `benchmark_forward_return`, and
+`excess_forward_return` for auditability. These are evaluation metrics and do not feed
+back into the scorer.
+
+## Insurance taxonomy validation
+
+Insurance remains outside the long-term scorer until its taxonomy is reviewed on live NSE
+filings. Use:
+
+```powershell
+python -m src.investing.cli filings HDFCLIFE --period Quarterly `
+  --database work/research.db --download-xbrl --validate-insurance
+```
+
+The validator reports life versus general insurance concept coverage and missing core
+facts. It does not coerce insurers into non-financial mappings.
+
+## Quarterly walk-forward reporting
+
+Use `--quarter-range-start` and `--quarter-range-end` to generate Indian fiscal quarter-end
+as-of dates. Add `--benchmark-portfolio` to compare each symbol against an equal-weight
+Nifty constituent portfolio and `--summary` for a compact report.
+
 ## Next data milestone
 
-Join point-in-time price and share-count data to calculate P/E, P/B, free-cash-flow yield, and price
-volatility, then feed the complete snapshots directly into `LongTermScorer`.
+Promote validated insurance mappings into canonical facts, then add score explanations and
+risk summaries grounded in saved source documents.
