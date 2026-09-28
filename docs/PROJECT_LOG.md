@@ -761,9 +761,37 @@ Verification:
 
 - `python -m pytest tests -q`: **87 passed**.
 
+### 2026-09-28 — Orchestration notifications
+
+Goal:
+
+- Alert operators when scheduled universe orchestration skips symbols without failing the
+  full run.
+
+Changes:
+
+- Added `src/investing/orchestration_notifications.py` with webhook, file, and SMTP email
+  delivery.
+- Added `--notify`, `--notify-webhook`, `--notify-output`, and `--notify-email-to` flags to
+  `orchestrate` and `schedule run-quarterly`.
+- Documented notification environment variables in `scripts/india-research-quarterly.env.example`
+  and `docs/india_research_scheduling.md`.
+- Added `tests/test_orchestration_notifications.py`.
+
+Decisions:
+
+- Default notification mode is `never` until a delivery channel is configured; configuring a
+  channel defaults to `skipped`.
+- Notifications are best-effort and do not change orchestration persistence behavior.
+
+Verification:
+
+- `python -m pytest tests -q`: **92 passed**.
+
 ## Next milestones
 
-1. Add optional notifications when orchestration completes with skipped symbols.
+1. Review persisted orchestration calibration output in the dashboard profile tab after each
+   scheduled run.
 
 ### 2026-09-28 — Profile store and archive verification
 

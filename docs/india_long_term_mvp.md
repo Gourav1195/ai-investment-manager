@@ -365,6 +365,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\india-research-quart
 Copy `scripts/india-research-quarterly.env.example` to configure database paths, index
 selection, and feature flags for cron or Task Scheduler wrappers.
 
+## Orchestration notifications
+
+Universe runs can optionally notify operators when symbols are skipped:
+
+```powershell
+python -m src.investing.cli orchestrate --index "NIFTY 50" `
+  --quarter-range-start 2024-04-01 --quarter-range-end 2025-03-31 `
+  --prices-start 2023-01-01 --prices-end 2025-06-01 `
+  --database work/research.db --notify skipped `
+  --notify-webhook https://example.com/hooks/orchestration
+```
+
+See [`docs/india_research_scheduling.md`](india_research_scheduling.md) for file and SMTP
+configuration via environment variables.
+
 ## Next data milestone
 
-Add optional orchestration notifications when universe runs complete with skipped symbols.
+Surface post-orchestration calibration summaries directly in the dashboard profile review tab.

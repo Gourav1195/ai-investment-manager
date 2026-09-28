@@ -111,3 +111,25 @@ Use `schedule show` to print the rolling quarter and price windows for the curre
 - Review skipped symbols and orchestration history in the dashboard **Orchestration runs** tab.
 - Activate reviewed calibration output with `profiles apply` before enabling
   `INVESTING_USE_ACTIVE_PROFILE=true`.
+
+## Orchestration notifications
+
+Optional notifications fire when a universe run skips symbols (default once a channel is
+configured):
+
+```powershell
+python -m src.investing.cli orchestrate --index "NIFTY 50" `
+  --quarter-range-start 2024-04-01 --quarter-range-end 2025-03-31 `
+  --prices-start 2023-01-01 --prices-end 2025-06-01 `
+  --database work/research.db --notify skipped `
+  --notify-output work/orchestration-notifications.log
+```
+
+Supported channels:
+
+- file append via `INVESTING_NOTIFY_OUTPUT` or `--notify-output`
+- webhook POST via `INVESTING_NOTIFY_WEBHOOK_URL` or `--notify-webhook`
+- SMTP email via `INVESTING_NOTIFY_EMAIL_TO` and `INVESTING_SMTP_*`
+
+Set `INVESTING_NOTIFY_ON=always` to notify on every successful run, or `never` to disable
+notifications even when webhook or email settings are present.

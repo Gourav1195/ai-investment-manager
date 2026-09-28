@@ -26,6 +26,11 @@ from .orchestration import (
     UniverseRunResult,
     resolve_orchestration_dates,
 )
+from .orchestration_notifications import (
+    NotificationConfig,
+    notification_config_from_env,
+    notify_orchestration_result,
+)
 from .profile_store import ScoringProfileStore, resolve_metrics
 from .scheduling import (
     QuarterlyResearchSchedule,
@@ -60,7 +65,10 @@ from .xbrl import NseXbrlClient, XbrlParser
 __all__ = [
     "FilingStore",
     "analyze_universe_backtest",
+    "NotificationConfig",
     "OrchestrationStore",
+    "notification_config_from_env",
+    "notify_orchestration_result",
     "archive_current_constituents",
     "backfill_quarter_snapshots_from_changes",
     "backfill_quarter_snapshots_from_intervals",

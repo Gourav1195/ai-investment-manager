@@ -27,7 +27,12 @@ from .constituents import (
     import_snapshots_csv,
     latest_fiscal_quarter_end,
 )
-from .orchestration import UniverseResearchOrchestrator, resolve_orchestration_dates
+from .orchestration import UniverseResearchOrchestrator, UniverseRunResult, resolve_orchestration_dates
+from .orchestration_notifications import (
+    NotificationConfig,
+    notification_config_from_env,
+    notify_orchestration_result,
+)
 from .profile_store import ScoringProfileStore
 from .scheduling import (
     QuarterlyResearchSchedule,
@@ -560,6 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Limit universe size for testing or partial runs",
     )
+    _add_notification_args(orchestrate)
 
     schedule = subcommands.add_parser(
         "schedule",
@@ -624,6 +630,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="Repository path used in generated scheduler commands",
     )
+    _add_notification_args(schedule_run)
     return parser
 
 
@@ -823,16 +830,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if args.schedule_command == "run-quarterly":
                 result = run_quarterly_research(schedule)
-                print(
-                    f"Quarterly schedule completed for {result.index_name}: evaluated "
-                    f"{result.symbols_evaluated}/{result.symbols_requested} symbols; "
-                    f"persisted {result.records_persisted} snapshots."
+                _finalize_orchestration_result(
+                    result,
+                    _notification_config_from_args(args),
+                    prefix="Quarterly schedule completed",
                 )
-                if result.skipped_symbols:
-                    preview = ", ".join(
-                        symbol for symbol, _message in result.skipped_symbols[:5]
-                    )
-                    print(f"Skipped examples: {preview}")
                 return 0
         elif args.command == "orchestrate":
             as_of_dates = resolve_orchestration_dates(
@@ -857,17 +859,11 @@ def main(argv: list[str] | None = None) -> int:
                 use_active_profile=args.use_active_profile,
                 max_symbols=args.max_symbols,
             )
-            print(
-                f"Orchestrated {result.index_name}: evaluated "
-                f"{result.symbols_evaluated}/{result.symbols_requested} symbols; "
-                f"persisted {result.records_persisted} snapshots; "
-                f"skipped {len(result.skipped_symbols)} symbols."
+            _finalize_orchestration_result(
+                result,
+                _notification_config_from_args(args),
+                prefix="Orchestrated",
             )
-            if result.skipped_symbols:
-                preview = ", ".join(
-                    symbol for symbol, _message in result.skipped_symbols[:5]
-                )
-                print(f"Skipped examples: {preview}")
             return 0
         elif args.command == "calibrate":
             snapshots = ResearchStore(args.database).list_snapshots()
@@ -1222,6 +1218,73 @@ def _resolve_as_of_dates(args: argparse.Namespace) -> list[datetime]:
     raise ValueError(
         "Provide --as-of-dates or both --quarter-range-start and --quarter-range-end"
     )
+
+
+def _add_notification_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--notify",
+        choices=["skipped", "always", "never"],
+        help="Send notifications when orchestration skips symbols, always, or never",
+    )
+    parser.add_argument(
+        "--notify-webhook",
+        help="Webhook URL for orchestration notifications",
+    )
+    parser.add_argument(
+        "--notify-output",
+        type=Path,
+        help="Append orchestration notifications to this file",
+    )
+    parser.add_argument(
+        "--notify-email-to",
+        help="Comma-separated email recipients for orchestration notifications",
+    )
+
+
+def _notification_config_from_args(args: argparse.Namespace) -> NotificationConfig:
+    base = notification_config_from_env()
+    mode = getattr(args, "notify", None) or base.mode
+    webhook_url = getattr(args, "notify_webhook", None) or base.webhook_url
+    output_file = getattr(args, "notify_output", None) or base.output_file
+    email_to = base.email_to
+    if getattr(args, "notify_email_to", None):
+        email_to = tuple(
+            address.strip()
+            for address in args.notify_email_to.split(",")
+            if address.strip()
+        )
+    return NotificationConfig(
+        mode=mode,
+        webhook_url=webhook_url,
+        output_file=output_file,
+        email_to=email_to,
+        email_from=base.email_from,
+        smtp_host=base.smtp_host,
+        smtp_port=base.smtp_port,
+        smtp_user=base.smtp_user,
+        smtp_password=base.smtp_password,
+        smtp_use_tls=base.smtp_use_tls,
+    )
+
+
+def _finalize_orchestration_result(
+    result: UniverseRunResult,
+    notification_config: NotificationConfig,
+    *,
+    prefix: str,
+) -> None:
+    print(
+        f"{prefix} for {result.index_name}: evaluated "
+        f"{result.symbols_evaluated}/{result.symbols_requested} symbols; "
+        f"persisted {result.records_persisted} snapshots; "
+        f"skipped {len(result.skipped_symbols)} symbols."
+    )
+    if result.skipped_symbols:
+        preview = ", ".join(symbol for symbol, _message in result.skipped_symbols[:5])
+        print(f"Skipped examples: {preview}")
+    delivered = notify_orchestration_result(result, notification_config)
+    if delivered:
+        print(f"Notifications sent via: {', '.join(delivered)}")
 
 
 def _quarterly_schedule_from_args(args: argparse.Namespace) -> QuarterlyResearchSchedule:
