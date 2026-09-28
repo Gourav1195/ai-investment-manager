@@ -3,6 +3,41 @@
 
 # FinRL-X
 
+> **This fork is being adapted into an India-focused, long-term equity research assistant.**
+> The first research-only module ranks companies with transparent quality, growth, financial
+> strength, valuation, and price-discipline factors. It does not place orders. See
+> [`docs/india_long_term_mvp.md`](docs/india_long_term_mvp.md) for commands and data contracts.
+> Project decisions, completed work, verification, and next milestones are maintained in
+> [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
+
+## India research quick start (no Docker)
+
+Docker is not required for the research module. On Windows PowerShell:
+
+```powershell
+cd C:\Users\gmodi\Documents\GitHub\ai-investment-manager
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install pandas numpy requests yfinance pytest
+
+python -m src.investing.cli universe --index "NIFTY 50" --output work\nifty50.csv
+python -m src.investing.cli prices RELIANCE INFY --start 2020-01-01 --end 2026-01-01 --output work\prices.csv
+python -m src.investing.cli filings INFY --period Quarterly --database work\research.db
+python -m src.investing.cli filings INFY --period Quarterly --database work\research.db --download-xbrl
+python -m src.investing.cli filings INFY --period Quarterly --database work\research.db --normalize-xbrl
+python -m src.investing.cli fundamentals INFY --as-of 2024-05-31 --database work\research.db
+python -m src.investing.cli score examples\india_fundamentals_template.csv
+```
+
+The `filings` command uses NSE's public website endpoint and does not require an API key. Docker,
+Alpaca credentials, and OpenAlgo are not used by these commands. Add `--download-xbrl` to archive
+and parse the linked financial statements into context-rich facts in the same SQLite database.
+New downloads are mapped into canonical statement facts automatically; use `--normalize-xbrl` to
+refresh mappings for documents that were already archived.
+The `fundamentals` command calculates revision-safe accounting metrics using only filings public by
+the requested cutoff. Valuation metrics remain pending until historical prices and shares are
+joined without lookahead bias.
+
 ### An AI-Native Modular Infrastructure for Quantitative Trading
 
 <img src="https://github.com/user-attachments/assets/80fe89bb-fb09-4267-b29a-76030512f8cf" width="420">
