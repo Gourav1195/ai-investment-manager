@@ -19,6 +19,13 @@ from .calibration import (
     deserialize_calibration_report,
 )
 from .orchestration import OrchestrationStore
+from .profile_diff import (
+    ProfileVersionOption,
+    default_profile_diff_versions,
+    profile_calibration_alignment,
+    profile_version_diff,
+    profile_version_options,
+)
 from .profile_store import ProfileVersionSummary, ScoringProfileStore
 from .research import ResearchStore
 
@@ -219,6 +226,38 @@ def calibration_report(store: ResearchStore) -> CalibrationReport:
 
 def profile_versions(database: str | Path) -> list[ProfileVersionSummary]:
     return ScoringProfileStore(database).list_versions()
+
+
+def profile_version_option_list(database: str | Path) -> list[ProfileVersionOption]:
+    return profile_version_options(str(database))
+
+
+def profile_version_diff_frame(
+    database: str | Path,
+    *,
+    base_version: int,
+    compare_version: int,
+    changed_only: bool = False,
+) -> pd.DataFrame:
+    return profile_version_diff(
+        str(database),
+        base_version=base_version,
+        compare_version=compare_version,
+        changed_only=changed_only,
+    )
+
+
+def profile_calibration_alignment_frame(
+    database: str | Path,
+    *,
+    profile_version: int,
+    suggestions: pd.DataFrame,
+) -> pd.DataFrame:
+    return profile_calibration_alignment(
+        str(database),
+        profile_version=profile_version,
+        suggestions=suggestions,
+    )
 
 
 def orchestration_calibration_options(database: str | Path) -> list[dict[str, str]]:

@@ -33,6 +33,7 @@ from .orchestration_notifications import (
     notification_config_from_env,
     notify_orchestration_result,
 )
+from .profile_diff import profile_calibration_alignment, profile_version_diff
 from .profile_store import ScoringProfileStore
 from .scheduling import (
     QuarterlyResearchSchedule,
@@ -497,6 +498,30 @@ def build_parser() -> argparse.ArgumentParser:
     profiles_activate.add_argument("--version", type=int, required=True)
     profiles_activate.add_argument("--database", type=Path, default=Path("work/research.db"))
 
+    profiles_diff = profiles_sub.add_parser(
+        "diff",
+        help="Compare scoring profile versions before activation",
+    )
+    profiles_diff.add_argument("--database", type=Path, default=Path("work/research.db"))
+    profiles_diff.add_argument(
+        "--base-version",
+        type=int,
+        default=1,
+        help="Base profile version for comparison (default built-in v1)",
+    )
+    profiles_diff.add_argument("--compare-version", type=int, required=True)
+    profiles_diff.add_argument(
+        "--changed-only",
+        action="store_true",
+        help="Show only metrics whose thresholds changed",
+    )
+    profiles_diff.add_argument("--output", type=Path)
+    profiles_diff.add_argument(
+        "--against-calibration",
+        action="store_true",
+        help="Also compare the candidate version to persisted calibration suggestions",
+    )
+
     calibrate = subcommands.add_parser(
         "calibrate",
         help="Analyze persisted universe backtests and suggest metric thresholds",
@@ -777,6 +802,35 @@ def main(argv: list[str] | None = None) -> int:
             elif args.profiles_command == "activate":
                 profile_store.activate(args.version)
                 print(f"Activated scoring profile version {args.version}")
+                return 0
+            elif args.profiles_command == "diff":
+                diff = profile_version_diff(
+                    str(args.database),
+                    base_version=args.base_version,
+                    compare_version=args.compare_version,
+                    changed_only=args.changed_only,
+                )
+                if args.output:
+                    diff.to_csv(args.output, index=False)
+                    print(f"Wrote profile diff to {args.output}")
+                else:
+                    print("Profile version diff")
+                    print(diff.to_string(index=False))
+                if args.against_calibration:
+                    snapshots = ResearchStore(args.database).list_snapshots()
+                    if snapshots.empty:
+                        raise ValueError(
+                            "No persisted research snapshots are available for calibration"
+                        )
+                    suggestions = analyze_universe_backtest(snapshots).threshold_suggestions
+                    alignment = profile_calibration_alignment(
+                        str(args.database),
+                        profile_version=args.compare_version,
+                        suggestions=suggestions,
+                    )
+                    print()
+                    print("Calibration alignment")
+                    print(alignment.to_string(index=False))
                 return 0
             else:
                 if args.input and args.from_calibration:

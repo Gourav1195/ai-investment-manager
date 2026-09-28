@@ -385,6 +385,17 @@ score buckets, threshold suggestions, skipped-symbol counts, and a reminder to a
 profiles with `profiles apply --activate`. Older runs without persisted calibration are
 recomputed from matching snapshots.
 
+Compare profile versions before activation in the dashboard **Profile review** tab or via CLI:
+
+```powershell
+python -m src.investing.cli profiles diff --base-version 1 --compare-version 2 `
+  --database work/research.db --changed-only --against-calibration
+```
+
+The diff table shows poor/strong threshold changes by entity type. When an orchestration run is
+selected above, the dashboard also flags candidate thresholds that do not match calibration
+suggestions.
+
 ## Next data milestone
 
-Add profile-version diffing in the dashboard before activating calibrated thresholds.
+Add one-click profile activation from the dashboard after diff review.

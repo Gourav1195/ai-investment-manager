@@ -31,6 +31,7 @@ from .orchestration_notifications import (
     notification_config_from_env,
     notify_orchestration_result,
 )
+from .profile_diff import profile_calibration_alignment, profile_version_diff
 from .profile_store import ScoringProfileStore, resolve_metrics
 from .scheduling import (
     QuarterlyResearchSchedule,
@@ -97,6 +98,8 @@ __all__ = [
     "orchestration_calibration_options",
     "orchestration_calibration_summary",
     "overview_metrics",
+    "profile_calibration_alignment",
+    "profile_version_diff",
     "QuarterlyResearchSchedule",
     "quarterly_schedule_from_env",
     "render_schedule_recipes",

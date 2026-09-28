@@ -813,9 +813,33 @@ Verification:
 
 - `python -m pytest tests -q`: **95 passed**.
 
+### 2026-09-28 — Profile version diffing
+
+Goal:
+
+- Let operators compare candidate scoring profile versions against the active or baseline
+  thresholds before activation.
+
+Changes:
+
+- Added `src/investing/profile_diff.py` for version diffs and calibration alignment checks.
+- Updated the dashboard **Profile review** tab with base/candidate version selectors, changed
+  metric highlighting, and orchestration calibration alignment warnings.
+- Added `profiles diff` CLI with optional `--against-calibration`.
+- Added `tests/test_profile_diff.py`.
+
+Decisions:
+
+- Built-in baseline v1 remains available even when it is not persisted in SQLite.
+- Calibration alignment uses the selected orchestration run's threshold suggestions when present.
+
+Verification:
+
+- `python -m pytest tests -q`: **98 passed**.
+
 ## Next milestones
 
-1. Add profile-version diffing in the dashboard before activating calibrated thresholds.
+1. Add one-click profile activation from the dashboard after diff review.
 
 ### 2026-09-28 — Profile store and archive verification
 

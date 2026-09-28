@@ -11,6 +11,7 @@ import streamlit as st
 from .dashboard_data import (
     calibration_report,
     category_scores,
+    default_profile_diff_versions,
     explanation_for_snapshot,
     filter_options,
     fundamental_metrics,
@@ -18,6 +19,9 @@ from .dashboard_data import (
     orchestration_calibration_summary,
     orchestration_runs,
     overview_metrics,
+    profile_calibration_alignment_frame,
+    profile_version_diff_frame,
+    profile_version_option_list,
     profile_versions,
     snapshot_detail,
     snapshot_summary_frame,
@@ -111,6 +115,7 @@ def main() -> None:
 def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     st.subheader("Latest orchestration calibration")
     run_options = orchestration_calibration_options(database_path)
+    calibration_summary = None
     if not run_options:
         st.info(
             "No orchestration runs recorded yet. Run `orchestrate` or "
@@ -123,30 +128,30 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
             options=list(labels.keys()),
             format_func=lambda run_key: labels[run_key],
         )
-        summary = orchestration_calibration_summary(
+        calibration_summary = orchestration_calibration_summary(
             database_path,
             run_key=selected_run,
             store=store,
         )
-        if summary is None:
+        if calibration_summary is None:
             st.warning(
                 "No persisted snapshots match this orchestration run's as-of dates."
             )
         else:
             columns = st.columns(4)
-            columns[0].metric("Snapshots persisted", summary.records_persisted)
-            columns[1].metric("Symbols evaluated", summary.symbols_evaluated)
-            columns[2].metric("Skipped symbols", summary.skipped_count)
+            columns[0].metric("Snapshots persisted", calibration_summary.records_persisted)
+            columns[1].metric("Symbols evaluated", calibration_summary.symbols_evaluated)
+            columns[2].metric("Skipped symbols", calibration_summary.skipped_count)
             columns[3].metric(
                 "Calibration source",
-                summary.source,
+                calibration_summary.source,
                 help="Persisted at run time or recomputed from stored snapshots.",
             )
             st.caption(
-                f"{summary.index_name} | created {summary.created_at} | "
-                f"as-of dates: {', '.join(summary.as_of_dates)}"
+                f"{calibration_summary.index_name} | created {calibration_summary.created_at} | "
+                f"as-of dates: {', '.join(calibration_summary.as_of_dates)}"
             )
-            _render_calibration_tables(summary.report)
+            _render_calibration_tables(calibration_summary.report)
             st.info(
                 "Review threshold suggestions, export with `calibrate --report thresholds`, "
                 "then apply a new version with `profiles apply --activate`."
@@ -163,6 +168,8 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     else:
         st.info("No saved scoring profile versions yet. Use `profiles apply` after calibration.")
 
+    _render_profile_version_diff(database_path, calibration_summary)
+
     st.subheader("All-snapshot calibration review")
     report = calibration_report(store)
     if report.score_buckets.empty and report.threshold_suggestions.empty:
@@ -173,6 +180,86 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
         return
 
     _render_calibration_tables(report)
+
+
+def _render_profile_version_diff(
+    database_path: Path,
+    calibration_summary,
+) -> None:
+    st.subheader("Profile version diff")
+    options = profile_version_option_list(database_path)
+    version_labels = {option.profile_version: option.label for option in options}
+    default_base, default_compare = default_profile_diff_versions(database_path)
+    if default_base == default_compare and len(options) <= 1:
+        st.info(
+            "Save a candidate profile with `profiles apply` to compare it against the "
+            "active or baseline thresholds before activation."
+        )
+        return
+
+    columns = st.columns(3)
+    with columns[0]:
+        base_version = st.selectbox(
+            "Base version",
+            options=list(version_labels.keys()),
+            index=_option_index(version_labels, default_base),
+            format_func=lambda version: version_labels[version],
+            key="profile_diff_base",
+        )
+    with columns[1]:
+        compare_version = st.selectbox(
+            "Candidate version",
+            options=list(version_labels.keys()),
+            index=_option_index(version_labels, default_compare),
+            format_func=lambda version: version_labels[version],
+            key="profile_diff_compare",
+        )
+    with columns[2]:
+        changed_only = st.checkbox(
+            "Changed metrics only",
+            value=True,
+            key="profile_diff_changed_only",
+        )
+
+    diff = profile_version_diff_frame(
+        database_path,
+        base_version=base_version,
+        compare_version=compare_version,
+        changed_only=changed_only,
+    )
+    if diff.empty:
+        st.success("No threshold differences between the selected profile versions.")
+    else:
+        st.dataframe(diff, use_container_width=True, hide_index=True)
+        changed_count = int(diff["changed"].sum()) if "changed" in diff.columns else len(diff)
+        st.caption(f"{changed_count} metric thresholds differ between the selected versions.")
+
+    if (
+        calibration_summary is not None
+        and not calibration_summary.report.threshold_suggestions.empty
+    ):
+        st.markdown("**Calibration alignment for candidate version**")
+        alignment = profile_calibration_alignment_frame(
+            database_path,
+            profile_version=compare_version,
+            suggestions=calibration_summary.report.threshold_suggestions,
+        )
+        mismatches = alignment[~alignment["matches_suggestion"]]
+        st.dataframe(alignment, use_container_width=True, hide_index=True)
+        if mismatches.empty:
+            st.success(
+                "Candidate thresholds match the latest orchestration calibration suggestions."
+            )
+        else:
+            st.warning(
+                f"{len(mismatches)} suggested thresholds differ from the candidate profile. "
+                "Review before `profiles activate`."
+            )
+
+
+def _option_index(options: dict[int, str], value: int) -> int:
+    keys = list(options.keys())
+    return keys.index(value) if value in keys else 0
 
 
 def _render_calibration_tables(report) -> None:
