@@ -10,7 +10,8 @@ import sys
 import pandas as pd
 
 from .filings import FilingStore, IST, NseFinancialResultsClient
-from .fundamentals import FundamentalCalculator
+from .explanations import ScoreExplainer, explanations_to_frame
+from .fundamentals import FundamentalCalculator, FundamentalSnapshot
 from .insurance import InsuranceTaxonomyValidator
 from .market import MarketJoinError, MarketMetricsJoiner, snapshots_to_scorer_frame
 from .providers import (
@@ -22,6 +23,7 @@ from .providers import (
 from .research import (
     ResearchStore,
     WalkForwardEvaluator,
+    _snapshot_key,
     fiscal_quarter_end_dates,
     records_to_frame,
     walkforward_report,
@@ -127,6 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=365,
         help="Forward return horizon used for benchmark comparison",
     )
+    fundamentals.add_argument(
+        "--explain",
+        action="store_true",
+        help="Include deterministic score explanations when persisting research",
+    )
     fundamentals.add_argument("--output", type=Path)
 
     walkforward = subcommands.add_parser(
@@ -198,7 +205,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print a compact benchmark comparison report",
     )
+    walkforward.add_argument(
+        "--explain",
+        action="store_true",
+        help="Attach deterministic score explanations grounded in source filings",
+    )
     walkforward.add_argument("--output", type=Path)
+
+    explain = subcommands.add_parser(
+        "explain",
+        help="Explain a research score using saved source filing metadata",
+    )
+    explain.add_argument("symbol", help="NSE symbol such as INFY")
+    explain.add_argument(
+        "--as-of", required=True, help="ISO date or timezone-aware datetime cutoff"
+    )
+    explain.add_argument("--database", type=Path, default=Path("work/research.db"))
+    explain.add_argument(
+        "--from-store",
+        action="store_true",
+        help="Explain a persisted research snapshot instead of recomputing",
+    )
+    explain.add_argument(
+        "--persist",
+        action="store_true",
+        help="Save the explanation to the research database",
+    )
+    explain.add_argument("--output", type=Path)
     return parser
 
 
@@ -285,18 +318,70 @@ def main(argv: list[str] | None = None) -> int:
                 portfolio_symbols=portfolio_symbols,
             )
             if args.persist:
-                inserted = ResearchStore(args.database).save_records(records)
-                counts = ResearchStore(args.database).counts()
+                research_store = ResearchStore(args.database)
+                inserted = research_store.save_records(records)
+                counts = research_store.counts()
                 print(
                     f"Persisted {inserted} research snapshots. "
                     f"Total evaluations: {counts['evaluations']}; "
                     f"total snapshots: {counts['snapshots']}"
                 )
-            data = (
-                walkforward_report(records)
-                if args.summary
-                else records_to_frame(records)
-            )
+                if args.explain:
+                    explained = _persist_explanations(
+                        records, FilingStore(args.database), research_store
+                    )
+                    print(f"Persisted {explained} score explanations.")
+            if args.explain and not args.persist:
+                data = explanations_to_frame(
+                    _explain_records(records, FilingStore(args.database))
+                )
+            else:
+                data = (
+                    walkforward_report(records)
+                    if args.summary
+                    else records_to_frame(records)
+                )
+        elif args.command == "explain":
+            as_of = _parse_as_of(args.as_of)
+            filing_store = FilingStore(args.database)
+            research_store = ResearchStore(args.database)
+            if args.from_store:
+                snapshots = research_store.list_snapshots(
+                    symbol=args.symbol, as_of=as_of.isoformat()
+                )
+                if snapshots.empty:
+                    raise ValueError(
+                        f"No persisted research snapshot exists for {args.symbol} "
+                        f"as of {as_of.date().isoformat()}"
+                    )
+                row = snapshots.iloc[0]
+                snapshot = FundamentalSnapshot.from_record(row)
+                explanation = ScoreExplainer().explain_snapshot(
+                    snapshot,
+                    overall_score=_optional_float(row.get("overall_score")),
+                    research_view=_optional_text(row.get("research_view")),
+                    data_coverage=_optional_float(row.get("data_coverage")),
+                    filing_store=filing_store,
+                )
+                explanations = [explanation]
+            else:
+                raise ValueError(
+                    "Fresh explanation requires a persisted snapshot; run fundamentals "
+                    "or walkforward with --persist first, then explain --from-store"
+                )
+            if args.persist:
+                snapshot_key = str(snapshots.iloc[0]["snapshot_key"])
+                evaluation_key = str(snapshots.iloc[0]["evaluation_key"])
+                research_store.save_explanations(
+                    [
+                        (
+                            snapshot_key,
+                            evaluation_key,
+                            explanations[0].to_record(),
+                        )
+                    ]
+                )
+            data = explanations_to_frame(explanations)
         else:
             as_of = _parse_as_of(args.as_of)
             if args.persist:
@@ -313,14 +398,24 @@ def main(argv: list[str] | None = None) -> int:
                     benchmark_index=args.benchmark_index,
                     forward_days=args.forward_days,
                 )
-                inserted = ResearchStore(args.database).save_records(records)
-                counts = ResearchStore(args.database).counts()
+                research_store = ResearchStore(args.database)
+                inserted = research_store.save_records(records)
+                counts = research_store.counts()
                 print(
                     f"Persisted {inserted} research snapshots. "
                     f"Total evaluations: {counts['evaluations']}; "
                     f"total snapshots: {counts['snapshots']}"
                 )
-                data = records_to_frame(records)
+                if args.explain:
+                    explained = _persist_explanations(
+                        records, FilingStore(args.database), research_store
+                    )
+                    print(f"Persisted {explained} score explanations.")
+                    data = explanations_to_frame(
+                        _explain_records(records, FilingStore(args.database))
+                    )
+                else:
+                    data = records_to_frame(records)
             else:
                 store = FilingStore(args.database)
                 calculator = FundamentalCalculator()
@@ -419,6 +514,37 @@ def _load_walkforward_prices(
     if args.prices:
         return pd.read_csv(args.prices)
     raise ValueError("Provide --prices or --fetch-prices for walk-forward research")
+
+
+def _explain_records(records, filing_store: FilingStore):
+    explainer = ScoreExplainer()
+    return [explainer.explain_record(record, filing_store) for record in records]
+
+
+def _persist_explanations(records, filing_store: FilingStore, research_store: ResearchStore) -> int:
+    explanations = _explain_records(records, filing_store)
+    items = [
+        (
+            _snapshot_key(record.evaluation_key, record.snapshot.symbol),
+            record.evaluation_key,
+            explanation.to_record(),
+        )
+        for record, explanation in zip(records, explanations)
+    ]
+    return research_store.save_explanations(items)
+
+
+def _optional_float(value) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
+def _optional_text(value) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _parse_as_of(value: str) -> datetime:

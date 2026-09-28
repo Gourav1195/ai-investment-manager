@@ -182,6 +182,22 @@ Use `--quarter-range-start` and `--quarter-range-end` to generate Indian fiscal 
 as-of dates. Add `--benchmark-portfolio` to compare each symbol against an equal-weight
 Nifty constituent portfolio and `--summary` for a compact report.
 
+## Score explanations
+
+Deterministic explanations are available after a persisted research snapshot exists:
+
+```powershell
+python -m src.investing.cli fundamentals INFY --as-of 2024-05-31 `
+  --database work/research.db --fetch-prices --prices-start 2023-01-01 `
+  --prices-end 2025-06-01 --persist --explain
+
+python -m src.investing.cli explain INFY --as-of 2024-05-31 `
+  --database work/research.db --from-store
+```
+
+Explanations list the strongest score drivers, material risk flags, and the NSE filing
+metadata behind the underlying fundamental snapshot. They do not recalculate scores.
+
 ## Next data milestone
 
-Add score explanations and risk summaries grounded in saved source documents.
+Build a small research dashboard after the data and evaluation pipeline is trustworthy.

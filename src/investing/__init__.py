@@ -1,7 +1,8 @@
 """India-focused, research-only long-term investing tools."""
 
+from .explanations import ResearchExplanation, ScoreExplainer, explanations_to_frame
 from .filings import FilingStore, NseFinancialResultsClient
-from .fundamentals import CanonicalFactMapper, FundamentalCalculator
+from .fundamentals import CanonicalFactMapper, FundamentalCalculator, FundamentalSnapshot
 from .insurance import InsuranceTaxonomyReport, InsuranceTaxonomyValidator
 from .market import MarketMetricsJoiner, snapshots_to_scorer_frame
 from .providers import (
@@ -23,12 +24,16 @@ __all__ = [
     "FilingStore",
     "CanonicalFactMapper",
     "FundamentalCalculator",
+    "FundamentalSnapshot",
     "InsuranceTaxonomyReport",
     "InsuranceTaxonomyValidator",
     "MarketMetricsJoiner",
     "LongTermScorer",
+    "ResearchExplanation",
     "ResearchStore",
+    "ScoreExplainer",
     "WalkForwardEvaluator",
+    "explanations_to_frame",
     "fiscal_quarter_end_dates",
     "nifty_benchmark_symbol",
     "records_to_frame",

@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation
 import json
 from typing import Any, Iterable, Literal, Mapping, Protocol
 
+import pandas as pd
+
 from .insurance import GENERAL_INSURANCE_CONCEPTS, LIFE_INSURANCE_CONCEPTS
 
 Statement = Literal["income", "balance_sheet", "cash_flow", "prudential"]
@@ -341,6 +343,47 @@ class FundamentalSnapshot:
         record = dict(self.__dict__)
         record["source_filing_keys"] = ";".join(self.source_filing_keys)
         return record
+
+    @classmethod
+    def from_record(cls, row: Mapping[str, Any]) -> "FundamentalSnapshot":
+        source_keys = row.get("source_filing_keys") or ""
+        if isinstance(source_keys, str):
+            filing_keys = tuple(
+                key.strip() for key in source_keys.split(";") if key.strip()
+            )
+        else:
+            filing_keys = tuple(source_keys)
+        return cls(
+            symbol=str(row["symbol"]).strip().upper(),
+            entity_type=str(row.get("entity_type") or "non_bank"),
+            as_of=str(row["as_of"]),
+            period_end=str(row.get("period_end") or ""),
+            roe=_optional_float(row.get("roe")),
+            roce=_optional_float(row.get("roce")),
+            operating_margin=_optional_float(row.get("operating_margin")),
+            revenue_cagr_3y=_optional_float(row.get("revenue_cagr_3y")),
+            earnings_cagr_3y=_optional_float(row.get("earnings_cagr_3y")),
+            debt_to_equity=_optional_float(row.get("debt_to_equity")),
+            interest_coverage=_optional_float(row.get("interest_coverage")),
+            free_cash_flow=_optional_float(row.get("free_cash_flow")),
+            pre_tax_margin=_optional_float(row.get("pre_tax_margin")),
+            return_on_assets=_optional_float(row.get("return_on_assets")),
+            gross_npa_ratio=_optional_float(row.get("gross_npa_ratio")),
+            cet1_ratio=_optional_float(row.get("cet1_ratio")),
+            latest_net_income=_optional_float(row.get("latest_net_income")),
+            basic_eps=_optional_float(row.get("basic_eps")),
+            book_equity=_optional_float(row.get("book_equity")),
+            price_date=_optional_text(row.get("price_date")),
+            price=_optional_float(row.get("price")),
+            shares_outstanding=_optional_float(row.get("shares_outstanding")),
+            pe=_optional_float(row.get("pe")),
+            pb=_optional_float(row.get("pb")),
+            free_cash_flow_yield=_optional_float(row.get("free_cash_flow_yield")),
+            volatility_1y=_optional_float(row.get("volatility_1y")),
+            calculation_version=int(row.get("calculation_version") or CALCULATION_VERSION),
+            market_join_version=_optional_int(row.get("market_join_version")),
+            source_filing_keys=filing_keys,
+        )
 
     def to_scorer_row(self) -> dict[str, Any]:
         return {
@@ -770,3 +813,37 @@ def _is_consolidated(value: str | None) -> bool:
         return False
     normalized = value.strip().lower().replace("_", "-")
     return normalized in {"consolidated", "consol"}
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        if pd.isna(value):  # type: ignore[arg-type]
+            return None
+    except (TypeError, ValueError):
+        pass
+    return float(value)
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        if pd.isna(value):  # type: ignore[arg-type]
+            return None
+    except (TypeError, ValueError):
+        pass
+    return int(value)
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):  # type: ignore[arg-type]
+            return None
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return text or None

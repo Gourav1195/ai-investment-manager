@@ -287,6 +287,32 @@ class FilingStore:
                 for row in connection.execute(query, (filing_key,)).fetchall()
             }
 
+    def filing_summaries(self, filing_keys: Iterable[str]) -> list[dict[str, Any]]:
+        """Return auditable metadata for the filings used in a calculation."""
+
+        keys = [key.strip() for key in filing_keys if key and str(key).strip()]
+        if not keys:
+            return []
+        placeholders = ", ".join("?" for _ in keys)
+        query = f"""
+            SELECT
+                filing_key,
+                symbol,
+                period_type,
+                relating_to,
+                period_start,
+                period_end,
+                filing_at,
+                consolidated,
+                entity_type,
+                xbrl_url
+            FROM financial_result_filings
+            WHERE filing_key IN ({placeholders})
+            ORDER BY filing_at, period_end
+        """
+        with self._connect() as connection:
+            return [dict(row) for row in connection.execute(query, keys).fetchall()]
+
     def pending_xbrl(
         self,
         *,

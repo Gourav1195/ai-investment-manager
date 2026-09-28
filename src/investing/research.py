@@ -25,7 +25,7 @@ from .market import (
 from .providers import nifty_benchmark_symbol
 from .scoring import LongTermScorer
 
-RESEARCH_STORE_VERSION = 2
+RESEARCH_STORE_VERSION = 3
 DEFAULT_FORWARD_DAYS = 365
 SnapshotCadence = Literal["annual", "quarterly"]
 FISCAL_QUARTER_ENDS = ((6, 30), (9, 30), (12, 31), (3, 31))
@@ -419,6 +419,80 @@ class ResearchStore:
             rows = connection.execute(query, params).fetchall()
         return pd.DataFrame([dict(row) for row in rows], columns=rows[0].keys()) if rows else pd.DataFrame()
 
+    def save_explanations(
+        self,
+        items: Iterable[tuple[str, str, Mapping[str, Any]]],
+    ) -> int:
+        """Persist explanations keyed by ``(snapshot_key, evaluation_key, record)``."""
+
+        created_at = datetime.now(tz=IST).isoformat()
+        inserted = 0
+        with self._connect() as connection:
+            for snapshot_key, evaluation_key, row in items:
+                explanation_key = _explanation_key(snapshot_key)
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO research_explanations (
+                        explanation_key,
+                        snapshot_key,
+                        evaluation_key,
+                        symbol,
+                        as_of,
+                        research_view,
+                        overall_score,
+                        data_coverage,
+                        score_drivers_json,
+                        risk_flags_json,
+                        source_documents_json,
+                        explanation_version,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        explanation_key,
+                        snapshot_key,
+                        evaluation_key,
+                        row["symbol"],
+                        row["as_of"],
+                        row.get("research_view"),
+                        row.get("overall_score"),
+                        row.get("data_coverage"),
+                        row.get("score_drivers_json", "[]"),
+                        row.get("risk_flags_json", "[]"),
+                        row.get("source_documents_json", "[]"),
+                        row.get("explanation_version", 1),
+                        created_at,
+                    ),
+                )
+                inserted += 1
+        return inserted
+
+    def list_explanations(
+        self,
+        *,
+        symbol: str | None = None,
+        as_of: str | None = None,
+    ) -> pd.DataFrame:
+        query = "SELECT * FROM research_explanations"
+        filters: list[str] = []
+        params: list[Any] = []
+        if symbol is not None:
+            filters.append("symbol = ?")
+            params.append(symbol.strip().upper())
+        if as_of is not None:
+            filters.append("as_of = ?")
+            params.append(as_of)
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY as_of, symbol"
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return (
+            pd.DataFrame([dict(row) for row in rows], columns=rows[0].keys())
+            if rows
+            else pd.DataFrame()
+        )
+
     def counts(self) -> dict[str, int]:
         with self._connect() as connection:
             evaluations = connection.execute(
@@ -427,7 +501,14 @@ class ResearchStore:
             snapshots = connection.execute(
                 "SELECT COUNT(*) FROM research_snapshots"
             ).fetchone()[0]
-        return {"evaluations": evaluations, "snapshots": snapshots}
+            explanations = connection.execute(
+                "SELECT COUNT(*) FROM research_explanations"
+            ).fetchone()[0]
+        return {
+            "evaluations": evaluations,
+            "snapshots": snapshots,
+            "explanations": explanations,
+        }
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -513,6 +594,26 @@ class ResearchStore:
 
                 CREATE INDEX IF NOT EXISTS idx_research_snapshots_symbol_as_of
                 ON research_snapshots(symbol, as_of);
+
+                CREATE TABLE IF NOT EXISTS research_explanations (
+                    explanation_key TEXT PRIMARY KEY,
+                    snapshot_key TEXT NOT NULL UNIQUE,
+                    evaluation_key TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    as_of TEXT NOT NULL,
+                    research_view TEXT,
+                    overall_score REAL,
+                    data_coverage REAL,
+                    score_drivers_json TEXT NOT NULL,
+                    risk_flags_json TEXT NOT NULL,
+                    source_documents_json TEXT NOT NULL,
+                    explanation_version INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (snapshot_key)
+                        REFERENCES research_snapshots(snapshot_key),
+                    FOREIGN KEY (evaluation_key)
+                        REFERENCES research_evaluations(evaluation_key)
+                );
                 """)
             self._migrate(connection)
 
@@ -548,6 +649,29 @@ class ResearchStore:
                 "ALTER TABLE research_snapshots "
                 "ADD COLUMN excess_portfolio_forward_return REAL"
             )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS research_explanations (
+                explanation_key TEXT PRIMARY KEY,
+                snapshot_key TEXT NOT NULL UNIQUE,
+                evaluation_key TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                as_of TEXT NOT NULL,
+                research_view TEXT,
+                overall_score REAL,
+                data_coverage REAL,
+                score_drivers_json TEXT NOT NULL,
+                risk_flags_json TEXT NOT NULL,
+                source_documents_json TEXT NOT NULL,
+                explanation_version INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (snapshot_key)
+                    REFERENCES research_snapshots(snapshot_key),
+                FOREIGN KEY (evaluation_key)
+                    REFERENCES research_evaluations(evaluation_key)
+            )
+            """
+        )
 
 
 def fiscal_quarter_end_dates(start: date, end: date) -> list[datetime]:
@@ -632,6 +756,10 @@ def _evaluation_key(
 def _snapshot_key(evaluation_key: str, symbol: str) -> str:
     payload = f"{evaluation_key}|{symbol.strip().upper()}"
     return sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _explanation_key(snapshot_key: str) -> str:
+    return sha256(f"explanation|{snapshot_key}".encode("utf-8")).hexdigest()
 
 
 def _group_by_evaluation(

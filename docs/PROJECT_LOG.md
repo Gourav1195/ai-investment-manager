@@ -424,6 +424,12 @@ source, and browser-compatible request headers; the repeated live check succeede
   respectively, with company-type-specific metrics.
 - Temporary SQLite databases were removed successfully after connection lifecycle repair.
 
+### 2026-09-28 — Score explanation verification
+
+- `python -m pytest tests -q`: **50 passed**.
+- Score drivers, risk flags, filing lineage, and explanation persistence covered by
+  `tests/test_explanations.py`.
+
 ### 2026-09-28 — Insurance canonical mapping verification
 
 - `python -m pytest tests -q`: **46 passed**.
@@ -506,10 +512,39 @@ Remaining work:
 
 - Add score explanations and risk summaries grounded in saved source documents.
 
+### 2026-09-28 — Grounded score explanations and risk summaries
+
+Goal:
+
+- Explain deterministic research scores and surface material risks using saved NSE
+  filing metadata, without letting an LLM calculate or override scores.
+
+Changes:
+
+- Added `src/investing/explanations.py` with `ScoreExplainer` and `ResearchExplanation`.
+- Added top score-driver summaries from weighted metric contributions and deterministic
+  risk flags for leverage, valuation, volatility, growth, and data coverage.
+- Extended `FilingStore.filing_summaries` to ground explanations in archived filing
+  metadata and XBRL links.
+- Added `FundamentalSnapshot.from_record` for explaining persisted research snapshots.
+- Persisted explanations in `research_explanations` (research store version 3).
+- Added `explain` CLI command plus `--explain` on `fundamentals` and `walkforward`.
+- Added `tests/test_explanations.py`.
+
+Decisions:
+
+- Explanations are template-based and deterministic; they cite source filing keys and
+  NSE metadata only.
+- The `explain` command reads persisted snapshots with `--from-store`; fresh research
+  runs can persist explanations alongside snapshots via `--explain`.
+
+Remaining work:
+
+- Build a small research dashboard after the data and evaluation pipeline is trustworthy.
+
 ## Next milestones
 
-1. Add score explanations and risk summaries grounded in saved source documents.
-2. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
+1. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
 
 ## Known limitations
 
