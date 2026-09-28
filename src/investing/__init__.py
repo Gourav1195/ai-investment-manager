@@ -6,6 +6,12 @@ from .calibration import (
     score_bucket_report,
     threshold_suggestions,
 )
+from .constituent_expansion import (
+    backfill_quarter_snapshots_from_changes,
+    backfill_quarter_snapshots_from_intervals,
+    load_membership_intervals_csv,
+    load_reconstitution_changes_csv,
+)
 from .constituents import (
     ConstituentHistoryStore,
     archive_current_constituents,
@@ -56,6 +62,10 @@ __all__ = [
     "analyze_universe_backtest",
     "OrchestrationStore",
     "archive_current_constituents",
+    "backfill_quarter_snapshots_from_changes",
+    "backfill_quarter_snapshots_from_intervals",
+    "load_membership_intervals_csv",
+    "load_reconstitution_changes_csv",
     "build_profile_version",
     "constituent_coverage",
     "ConstituentHistoryStore",

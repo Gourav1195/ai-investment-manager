@@ -209,13 +209,50 @@ Record historical membership with `universe --persist --effective-date`, import 
 constituent snapshot on or before each as-of date, falling back to current membership when
 no snapshot exists.
 
-Constituent CSV format:
+### Long-format snapshot CSV
 
 ```csv
 effective_date,symbol
 2024-03-31,RELIANCE
 2024-03-31,INFY
 ```
+
+### Membership intervals
+
+Use half-open `[valid_from, valid_to)` intervals to backfill fiscal quarter-end snapshots:
+
+```powershell
+python -m src.investing.cli constituents import-intervals `
+  examples/nifty50_membership_intervals.example.csv --index "NIFTY 50" `
+  --database work/research.db --quarter-range-start 2024-03-31 `
+  --quarter-range-end 2024-09-30
+```
+
+### Wide membership matrix
+
+```powershell
+python -m src.investing.cli constituents import-wide `
+  examples/nifty50_membership_wide.example.csv --index "NIFTY 50" `
+  --database work/research.db
+```
+
+### Reconstitution change backfill
+
+Download or normalize the official NSE inclusion/exclusion workbook, then replay changes
+backward from current membership:
+
+```powershell
+python -m src.investing.cli constituents fetch-changes --index "NIFTY 50" `
+  work/nifty50-changes.csv
+
+python -m src.investing.cli constituents backfill --index "NIFTY 50" `
+  --changes work/nifty50-changes.csv --anchor current `
+  --quarter-range-start 2018-04-01 --quarter-range-end 2025-06-30 `
+  --database work/research.db
+```
+
+If `fetch-changes` cannot read the legacy `.xls` workbook locally, download
+`IndexInclExcl.xls` from NSE and pass `--input IndexInclExcl.xls`.
 
 ## Universe calibration
 
@@ -330,5 +367,4 @@ selection, and feature flags for cron or Task Scheduler wrappers.
 
 ## Next data milestone
 
-Expand historical constituent coverage beyond manually imported CSV snapshots and official
-archive downloads.
+Add optional orchestration notifications when universe runs complete with skipped symbols.

@@ -10,12 +10,22 @@ import sys
 import pandas as pd
 
 from .calibration import analyze_universe_backtest, build_profile_version
+from .constituent_expansion import (
+    backfill_quarter_snapshots_from_changes,
+    backfill_quarter_snapshots_from_intervals,
+    download_nse_index_changes_csv,
+    export_nse_changes_csv,
+    import_wide_snapshots_csv,
+    load_membership_intervals_csv,
+    load_reconstitution_changes_csv,
+)
 from .constituents import (
     SUPPORTED_INDICES,
     ConstituentHistoryStore,
     archive_current_constituents,
     constituent_coverage,
     import_snapshots_csv,
+    latest_fiscal_quarter_end,
 )
 from .orchestration import UniverseResearchOrchestrator, resolve_orchestration_dates
 from .profile_store import ScoringProfileStore
@@ -344,6 +354,93 @@ def build_parser() -> argparse.ArgumentParser:
         help="Replace an existing snapshot for the effective date",
     )
 
+    constituents_import_intervals = constituents_sub.add_parser(
+        "import-intervals",
+        help="Import membership intervals and optionally backfill quarter-end snapshots",
+    )
+    constituents_import_intervals.add_argument("input", type=Path)
+    constituents_import_intervals.add_argument(
+        "--index", required=True, choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    constituents_import_intervals.add_argument(
+        "--database", type=Path, default=Path("work/research.db")
+    )
+    constituents_import_intervals.add_argument("--quarter-range-start")
+    constituents_import_intervals.add_argument("--quarter-range-end")
+    constituents_import_intervals.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace existing quarter-end snapshots during backfill",
+    )
+
+    constituents_import_wide = constituents_sub.add_parser(
+        "import-wide",
+        help="Import wide membership snapshots with one column per effective date",
+    )
+    constituents_import_wide.add_argument("input", type=Path)
+    constituents_import_wide.add_argument(
+        "--index", required=True, choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    constituents_import_wide.add_argument("--database", type=Path, default=Path("work/research.db"))
+    constituents_import_wide.add_argument(
+        "--source", default="wide_csv_import", help="Lineage label stored with each snapshot"
+    )
+    constituents_import_wide.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace existing snapshots for imported effective dates",
+    )
+
+    constituents_backfill = constituents_sub.add_parser(
+        "backfill",
+        help="Backfill fiscal quarter-end snapshots from reconstitution changes",
+    )
+    constituents_backfill.add_argument(
+        "--changes",
+        type=Path,
+        required=True,
+        help="CSV of effective_date,symbol,action change events",
+    )
+    constituents_backfill.add_argument(
+        "--index", required=True, choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    constituents_backfill.add_argument("--database", type=Path, default=Path("work/research.db"))
+    constituents_backfill.add_argument("--quarter-range-start", required=True)
+    constituents_backfill.add_argument("--quarter-range-end", required=True)
+    constituents_backfill.add_argument(
+        "--anchor",
+        choices=["current", "store"],
+        default="current",
+        help="Membership anchor used to replay historical changes",
+    )
+    constituents_backfill.add_argument(
+        "--anchor-date",
+        help="Anchor date for store replay (ISO date, default latest fiscal quarter-end)",
+    )
+    constituents_backfill.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace existing quarter-end snapshots during backfill",
+    )
+
+    constituents_fetch_changes = constituents_sub.add_parser(
+        "fetch-changes",
+        help="Download and normalize the official NSE inclusion/exclusion workbook",
+    )
+    constituents_fetch_changes.add_argument(
+        "--index", required=True, choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    constituents_fetch_changes.add_argument("output", type=Path)
+    constituents_fetch_changes.add_argument(
+        "--input",
+        type=Path,
+        help="Use a locally downloaded IndexInclExcl workbook instead of fetching from NSE",
+    )
+    constituents_fetch_changes.add_argument(
+        "--sheet",
+        help="Workbook sheet name override (default uses the index name)",
+    )
+
     profiles = subcommands.add_parser(
         "profiles",
         help="Manage versioned scoring profile thresholds",
@@ -575,6 +672,92 @@ def main(argv: list[str] | None = None) -> int:
                         f"{result.index_name} {result.effective_date}: "
                         f"{result.status} ({result.symbol_count} symbols)"
                     )
+                return 0
+            elif args.constituents_command == "import-intervals":
+                intervals = load_membership_intervals_csv(args.input)
+                if not args.quarter_range_start or not args.quarter_range_end:
+                    raise ValueError(
+                        "import-intervals requires --quarter-range-start and "
+                        "--quarter-range-end to backfill quarter-end snapshots"
+                    )
+                result = backfill_quarter_snapshots_from_intervals(
+                    store,
+                    args.index,
+                    intervals,
+                    quarter_range_start=date.fromisoformat(args.quarter_range_start),
+                    quarter_range_end=date.fromisoformat(args.quarter_range_end),
+                    skip_existing=not args.force,
+                )
+                print(
+                    f"Backfilled {result.snapshots_written} quarter-end snapshots for "
+                    f"{result.index_name} from {args.input}."
+                )
+                return 0
+            elif args.constituents_command == "import-wide":
+                imported = import_wide_snapshots_csv(
+                    store,
+                    args.input,
+                    index_name=args.index,
+                    source=args.source,
+                    skip_existing=not args.force,
+                )
+                counts = store.counts()
+                print(
+                    f"Imported {imported} wide constituent snapshots from {args.input}. "
+                    f"Total constituent snapshots: {counts['constituent_snapshots']}"
+                )
+                return 0
+            elif args.constituents_command == "backfill":
+                changes = load_reconstitution_changes_csv(args.changes)
+                anchor_date = (
+                    date.fromisoformat(args.anchor_date)
+                    if args.anchor_date
+                    else latest_fiscal_quarter_end()
+                )
+                if args.anchor == "current":
+                    anchor_members = NiftyIndexUniverseProvider(args.index).symbols()
+                else:
+                    anchor_members = store.members_as_of(args.index, anchor_date)
+                    if not anchor_members:
+                        raise ValueError(
+                            f"No stored constituent snapshot exists for {args.index} "
+                            f"on or before {anchor_date.isoformat()}"
+                        )
+                result = backfill_quarter_snapshots_from_changes(
+                    store,
+                    args.index,
+                    changes,
+                    anchor_members=anchor_members,
+                    anchor_date=anchor_date,
+                    quarter_range_start=date.fromisoformat(args.quarter_range_start),
+                    quarter_range_end=date.fromisoformat(args.quarter_range_end),
+                    skip_existing=not args.force,
+                )
+                print(
+                    f"Backfilled {result.snapshots_written} quarter-end snapshots for "
+                    f"{result.index_name} using {args.changes} and anchor "
+                    f"{anchor_date.isoformat()} ({args.anchor})."
+                )
+                return 0
+            elif args.constituents_command == "fetch-changes":
+                if args.input:
+                    exported = export_nse_changes_csv(
+                        args.input,
+                        args.output,
+                        index_name=args.index,
+                        sheet_name=args.sheet,
+                    )
+                    source = args.input
+                else:
+                    exported = download_nse_index_changes_csv(
+                        args.output,
+                        index_name=args.index,
+                    )
+                    source = "NSE IndexInclExcl.xls"
+                print(
+                    f"Exported {exported} reconstitution events for {args.index} "
+                    f"from {source} to {args.output}."
+                )
                 return 0
             else:
                 dates = [date.fromisoformat(value) for value in args.dates]

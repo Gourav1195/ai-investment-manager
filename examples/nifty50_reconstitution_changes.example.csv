@@ -1,0 +1,5 @@
+effective_date,symbol,action,index_name
+2024-03-28,JIOFIN,add,NIFTY 50
+2024-03-28,ATGL,remove,NIFTY 50
+2024-09-27,BSE,add,NIFTY 50
+2024-09-27,PEL,remove,NIFTY 50

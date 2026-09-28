@@ -734,10 +734,36 @@ Verification:
 
 - `python -m pytest tests -q`: **81 passed**.
 
+### 2026-09-28 — Historical constituent expansion
+
+Goal:
+
+- Expand point-in-time Nifty membership coverage beyond single-date archives and manual
+  long-format CSV imports.
+
+Changes:
+
+- Added `src/investing/constituent_expansion.py` for membership intervals, wide snapshot
+  matrices, reconstitution change replay, and NSE workbook normalization.
+- Added `constituents import-intervals`, `import-wide`, `backfill`, and `fetch-changes`
+  CLI commands.
+- Added example interval, wide, and change CSV files under `examples/`.
+- Added `tests/test_constituent_expansion.py`.
+
+Decisions:
+
+- Membership intervals use half-open `[valid_from, valid_to)` semantics.
+- Change backfill replays official add/remove events backward from a current or stored anchor.
+- NSE workbook parsing is best-effort; local `--input` fallback is supported when `.xls`
+  engines are unavailable.
+
+Verification:
+
+- `python -m pytest tests -q`: **87 passed**.
+
 ## Next milestones
 
-1. Expand historical constituent coverage beyond manually imported CSV snapshots.
-2. Add optional notifications when orchestration completes with skipped symbols.
+1. Add optional notifications when orchestration completes with skipped symbols.
 
 ### 2026-09-28 — Profile store and archive verification
 
