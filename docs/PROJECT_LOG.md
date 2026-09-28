@@ -424,6 +424,12 @@ source, and browser-compatible request headers; the repeated live check succeede
   respectively, with company-type-specific metrics.
 - Temporary SQLite databases were removed successfully after connection lifecycle repair.
 
+### 2026-09-28 — Insurance canonical mapping verification
+
+- `python -m pytest tests -q`: **46 passed**.
+- Life and general insurance canonical mappings and filing-store normalization covered by
+  expanded insurance and canonical fundamentals tests.
+
 ### 2026-09-28 — Insurance and quarterly walk-forward verification
 
 - `python -m pytest tests -q`: **44 passed**.
@@ -471,15 +477,43 @@ source, and browser-compatible request headers; the repeated live check succeede
 - Adjusted price history with documented corporate-action handling.
 - Optional licensed or broker data provider behind the existing provider interface.
 
+### 2026-09-28 — Insurance canonical fact mappings
+
+Goal:
+
+- Promote validated life and general insurance XBRL concepts into canonical facts without
+  coercing insurers into non-financial mappings.
+
+Changes:
+
+- Added `INSURANCE_COMMON_MAPPINGS`, `LIFE_INSURANCE_MAPPINGS`, and
+  `GENERAL_INSURANCE_MAPPINGS` in `fundamentals.py`.
+- Extended `CanonicalFactMapper` to support `insurance` with life versus general taxonomy
+  inference from archived facts.
+- Bumped `MAPPING_VERSION` to 3 so insurance normalization is versioned separately.
+- Added canonical normalization coverage in `tests/test_insurance.py` and mapping tests in
+  `tests/test_canonical_fundamentals.py`.
+- Ignored local `graphify-out/` artifacts in `.gitignore`.
+
+Decisions:
+
+- Insurance canonical mapping uses the same life versus general concept overlap rule as
+  taxonomy validation.
+- `FundamentalCalculator` remains insurance-agnostic until insurer-specific ratio rules are
+  defined; canonical facts are available for audit and future scoring work.
+
+Remaining work:
+
+- Add score explanations and risk summaries grounded in saved source documents.
+
 ## Next milestones
 
-1. Promote validated insurance mappings into canonical facts after live taxonomy review.
-2. Add score explanations and risk summaries grounded in saved source documents.
-3. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
+1. Add score explanations and risk summaries grounded in saved source documents.
+2. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
 
 ## Known limitations
 
-- Insurance filings can be validated but are not yet mapped into canonical facts or the
+- Insurance canonical facts are stored but not yet used by `FundamentalCalculator` or the
   long-term scorer.
 - Portfolio benchmarking uses current Nifty membership rather than historical index
   constituents.

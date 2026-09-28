@@ -83,6 +83,42 @@ def test_bank_and_nbfc_taxonomies_use_company_specific_mappings() -> None:
     assert [item.metric for item in nbfc] == ["interest_income", "borrowings"]
 
 
+def test_life_and_general_insurance_use_validated_taxonomy_mappings() -> None:
+    mapper = CanonicalFactMapper()
+
+    life = mapper.map(
+        [
+            fact("GrossPremiumIncome"),
+            fact("NetPremiumIncome", order=1),
+            fact("ProfitLossForPeriod", order=2),
+            fact("Equity", order=3, duration=False),
+        ],
+        entity_type="insurance",
+    )
+    general = mapper.map(
+        [
+            fact("GrossPremiumsWritten"),
+            fact("PremiumEarnedNet", order=1),
+            fact("ProfitLossForPeriod", order=2),
+            fact("Assets", order=3, duration=False),
+        ],
+        entity_type="insurance",
+    )
+
+    assert [item.metric for item in life] == [
+        "gross_premium_income",
+        "net_premium_income",
+        "net_income",
+        "total_equity",
+    ]
+    assert [item.metric for item in general] == [
+        "gross_premiums_written",
+        "premium_earned_net",
+        "net_income",
+        "total_assets",
+    ]
+
+
 def test_unsupported_company_type_is_explicit() -> None:
     with pytest.raises(ValueError, match="Unsupported XBRL entity type"):
-        CanonicalFactMapper().map([], entity_type="insurance")
+        CanonicalFactMapper().map([], entity_type="unknown")

@@ -164,8 +164,8 @@ back into the scorer.
 
 ## Insurance taxonomy validation
 
-Insurance remains outside the long-term scorer until its taxonomy is reviewed on live NSE
-filings. Use:
+Validated life and general insurance taxonomies now map into `canonical_financial_facts`
+when `--normalize-xbrl` runs on archived insurance filings. Use:
 
 ```powershell
 python -m src.investing.cli filings HDFCLIFE --period Quarterly `
@@ -173,7 +173,8 @@ python -m src.investing.cli filings HDFCLIFE --period Quarterly `
 ```
 
 The validator reports life versus general insurance concept coverage and missing core
-facts. It does not coerce insurers into non-financial mappings.
+facts. Canonical normalization uses the same taxonomy split. Insurance-specific fundamental
+ratios and scorer integration remain future work.
 
 ## Quarterly walk-forward reporting
 
@@ -183,5 +184,4 @@ Nifty constituent portfolio and `--summary` for a compact report.
 
 ## Next data milestone
 
-Promote validated insurance mappings into canonical facts, then add score explanations and
-risk summaries grounded in saved source documents.
+Add score explanations and risk summaries grounded in saved source documents.

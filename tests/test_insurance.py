@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from src.investing.filings import FilingStore
+from src.investing.fundamentals import CanonicalFactMapper, MAPPING_VERSION
 from src.investing.insurance import (
     CORE_INSURANCE_CONCEPTS,
     GENERAL_INSURANCE_CONCEPTS,
@@ -114,6 +115,29 @@ def test_general_insurance_taxonomy_reports_missing_core(tmp_path) -> None:
     assert report.insurance_kind == "general"
     assert not report.is_validated
     assert report.missing_core_concepts == ("Equity",)
+
+
+def test_insurance_filing_normalizes_into_canonical_facts(tmp_path) -> None:
+    store = FilingStore(tmp_path / "research.db")
+    concepts = set(LIFE_INSURANCE_CONCEPTS)
+    filing_key = _seed_insurance_filing(store, concepts=concepts)
+
+    normalized = store.normalize_xbrl(symbol="HDFCLIFE", period="Quarterly")
+
+    assert normalized > 0
+    with store._connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT metric, mapping_version
+            FROM canonical_financial_facts
+            WHERE filing_key = ?
+            ORDER BY metric
+            """,
+            (filing_key,),
+        ).fetchall()
+    assert rows
+    assert all(row["mapping_version"] == MAPPING_VERSION for row in rows)
+    assert "gross_premium_income" in {row["metric"] for row in rows}
 
 
 def test_insurance_validation_rejects_non_insurance_entity() -> None:

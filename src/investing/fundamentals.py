@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation
 import json
 from typing import Any, Iterable, Literal, Mapping, Protocol
 
+from .insurance import GENERAL_INSURANCE_CONCEPTS, LIFE_INSURANCE_CONCEPTS
+
 Statement = Literal["income", "balance_sheet", "cash_flow", "prudential"]
 PeriodKind = Literal["duration", "instant"]
 
@@ -44,7 +46,7 @@ class CanonicalFact:
     mapping_priority: int
 
 
-MAPPING_VERSION = 2
+MAPPING_VERSION = 3
 CALCULATION_VERSION = 1
 
 
@@ -139,6 +141,38 @@ NBFC_MAPPINGS: dict[str, ConceptMapping] = {
 }
 
 
+INSURANCE_COMMON_MAPPINGS: dict[str, ConceptMapping] = {
+    "ProfitLossForPeriod": ConceptMapping("net_income", "income", "duration", 20),
+    "ProfitOrLossAttributableToOwnersOfParent": ConceptMapping(
+        "net_income_attributable", "income", "duration", 10
+    ),
+    "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations": ConceptMapping(
+        "basic_eps", "income", "duration"
+    ),
+    "IncomeFromInvestmentsNet": ConceptMapping(
+        "investment_income", "income", "duration"
+    ),
+    "Assets": ConceptMapping("total_assets", "balance_sheet", "instant"),
+    "Equity": ConceptMapping("total_equity", "balance_sheet", "instant"),
+}
+
+LIFE_INSURANCE_MAPPINGS: dict[str, ConceptMapping] = {
+    "GrossPremiumIncome": ConceptMapping("gross_premium_income", "income", "duration"),
+    "FirstYearPremium": ConceptMapping("first_year_premium", "income", "duration"),
+    "RenewalPremium": ConceptMapping("renewal_premium", "income", "duration"),
+    "SinglePremium": ConceptMapping("single_premium", "income", "duration"),
+    "NetPremiumIncome": ConceptMapping("net_premium_income", "income", "duration"),
+}
+
+GENERAL_INSURANCE_MAPPINGS: dict[str, ConceptMapping] = {
+    "GrossPremiumsWritten": ConceptMapping(
+        "gross_premiums_written", "income", "duration"
+    ),
+    "NetPremiumWritten": ConceptMapping("net_premium_written", "income", "duration"),
+    "PremiumEarnedNet": ConceptMapping("premium_earned_net", "income", "duration"),
+}
+
+
 BANK_MAPPINGS: dict[str, ConceptMapping] = {
     "Income": ConceptMapping("total_income", "income", "duration"),
     "InterestEarned": ConceptMapping("interest_income", "income", "duration"),
@@ -207,7 +241,7 @@ BANK_MAPPINGS: dict[str, ConceptMapping] = {
 class CanonicalFactMapper:
     """Map source concepts to stable metrics for a known company type."""
 
-    SUPPORTED_ENTITY_TYPES = frozenset({"non_bank", "nbfc", "bank"})
+    SUPPORTED_ENTITY_TYPES = frozenset({"non_bank", "nbfc", "bank", "insurance"})
 
     def mapping_for(self, entity_type: str) -> Mapping[str, ConceptMapping]:
         normalized = entity_type.strip().lower()
@@ -217,12 +251,31 @@ class CanonicalFactMapper:
             return {**COMMON_MAPPINGS, **NBFC_MAPPINGS}
         if normalized == "non_bank":
             return {**COMMON_MAPPINGS, **NON_BANK_MAPPINGS}
+        if normalized == "insurance":
+            raise ValueError(
+                "Insurance mappings are selected from archived facts; call map() instead"
+            )
         raise ValueError(f"Unsupported XBRL entity type: {entity_type}")
+
+    @staticmethod
+    def insurance_mappings(
+        facts: Iterable[FactLike | Mapping[str, object]],
+    ) -> dict[str, ConceptMapping]:
+        concepts = {str(_value(fact, "concept")) for fact in facts}
+        life_matches = len(concepts & LIFE_INSURANCE_CONCEPTS)
+        general_matches = len(concepts & GENERAL_INSURANCE_CONCEPTS)
+        if life_matches >= general_matches:
+            return {**INSURANCE_COMMON_MAPPINGS, **LIFE_INSURANCE_MAPPINGS}
+        return {**INSURANCE_COMMON_MAPPINGS, **GENERAL_INSURANCE_MAPPINGS}
 
     def map(
         self, facts: Iterable[FactLike | Mapping[str, object]], *, entity_type: str
     ) -> list[CanonicalFact]:
-        mappings = self.mapping_for(entity_type)
+        normalized = entity_type.strip().lower()
+        if normalized == "insurance":
+            mappings = self.insurance_mappings(facts)
+        else:
+            mappings = self.mapping_for(entity_type)
         canonical: list[CanonicalFact] = []
         for fact in facts:
             concept = str(_value(fact, "concept"))
