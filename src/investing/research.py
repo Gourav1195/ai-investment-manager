@@ -13,6 +13,7 @@ from typing import Any, Iterable, Iterator, Literal, Mapping, Protocol
 
 import pandas as pd
 
+from .constituents import ConstituentHistoryStore, resolve_portfolio_symbols
 from .filings import FilingStore, IST
 from .fundamentals import CALCULATION_VERSION, FundamentalCalculator, FundamentalSnapshot
 from .market import (
@@ -25,7 +26,7 @@ from .market import (
 from .providers import nifty_benchmark_symbol
 from .scoring import LongTermScorer
 
-RESEARCH_STORE_VERSION = 3
+RESEARCH_STORE_VERSION = 4
 DEFAULT_FORWARD_DAYS = 365
 SnapshotCadence = Literal["annual", "quarterly"]
 FISCAL_QUARTER_ENDS = ((6, 30), (9, 30), (12, 31), (3, 31))
@@ -115,6 +116,8 @@ class WalkForwardEvaluator:
         forward_days: int = DEFAULT_FORWARD_DAYS,
         snapshot_cadence: SnapshotCadence = "annual",
         portfolio_symbols: list[str] | None = None,
+        constituent_store: ConstituentHistoryStore | None = None,
+        use_historical_constituents: bool = False,
     ) -> list[ResearchRecord]:
         if not symbols:
             raise ValueError("At least one symbol is required")
@@ -125,12 +128,19 @@ class WalkForwardEvaluator:
 
         benchmark_symbol = nifty_benchmark_symbol(benchmark_index)
         normalized_symbols = _normalize_symbols(symbols)
-        normalized_portfolio = (
+        fallback_portfolio = (
             _normalize_symbols(portfolio_symbols) if portfolio_symbols else []
         )
         records: list[ResearchRecord] = []
 
         for as_of in sorted(as_of_dates):
+            normalized_portfolio, _membership_source = resolve_portfolio_symbols(
+                benchmark_index=benchmark_index,
+                as_of=as_of.date(),
+                store=constituent_store,
+                use_historical=use_historical_constituents,
+                fallback_symbols=fallback_portfolio,
+            )
             evaluation_key = _evaluation_key(
                 as_of=as_of,
                 symbols=normalized_symbols,
@@ -308,6 +318,9 @@ class ResearchStore:
                             return_on_assets,
                             gross_npa_ratio,
                             cet1_ratio,
+                            profit_margin,
+                            investment_income_ratio,
+                            equity_to_assets,
                             latest_net_income,
                             basic_eps,
                             book_equity,
@@ -340,7 +353,7 @@ class ResearchStore:
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -362,6 +375,9 @@ class ResearchStore:
                             row.get("return_on_assets"),
                             row.get("gross_npa_ratio"),
                             row.get("cet1_ratio"),
+                            row.get("profit_margin"),
+                            row.get("investment_income_ratio"),
+                            row.get("equity_to_assets"),
                             row.get("latest_net_income"),
                             row.get("basic_eps"),
                             row.get("book_equity"),
@@ -395,6 +411,20 @@ class ResearchStore:
                     )
                     inserted += 1
         return inserted
+
+    def list_evaluations(self) -> pd.DataFrame:
+        query = """
+            SELECT *
+            FROM research_evaluations
+            ORDER BY as_of DESC, created_at DESC
+        """
+        with self._connect() as connection:
+            rows = connection.execute(query).fetchall()
+        return (
+            pd.DataFrame([dict(row) for row in rows], columns=rows[0].keys())
+            if rows
+            else pd.DataFrame()
+        )
 
     def list_snapshots(
         self,
@@ -558,6 +588,9 @@ class ResearchStore:
                     return_on_assets REAL,
                     gross_npa_ratio REAL,
                     cet1_ratio REAL,
+                    profit_margin REAL,
+                    investment_income_ratio REAL,
+                    equity_to_assets REAL,
                     latest_net_income REAL,
                     basic_eps REAL,
                     book_equity REAL,
@@ -648,6 +681,18 @@ class ResearchStore:
             connection.execute(
                 "ALTER TABLE research_snapshots "
                 "ADD COLUMN excess_portfolio_forward_return REAL"
+            )
+        if "profit_margin" not in snapshot_columns:
+            connection.execute(
+                "ALTER TABLE research_snapshots ADD COLUMN profit_margin REAL"
+            )
+        if "investment_income_ratio" not in snapshot_columns:
+            connection.execute(
+                "ALTER TABLE research_snapshots ADD COLUMN investment_income_ratio REAL"
+            )
+        if "equity_to_assets" not in snapshot_columns:
+            connection.execute(
+                "ALTER TABLE research_snapshots ADD COLUMN equity_to_assets REAL"
             )
         connection.execute(
             """

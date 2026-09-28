@@ -49,7 +49,7 @@ class CanonicalFact:
 
 
 MAPPING_VERSION = 3
-CALCULATION_VERSION = 1
+CALCULATION_VERSION = 2
 
 
 COMMON_MAPPINGS: dict[str, ConceptMapping] = {
@@ -325,6 +325,9 @@ class FundamentalSnapshot:
     return_on_assets: float | None = None
     gross_npa_ratio: float | None = None
     cet1_ratio: float | None = None
+    profit_margin: float | None = None
+    investment_income_ratio: float | None = None
+    equity_to_assets: float | None = None
     latest_net_income: float | None = None
     basic_eps: float | None = None
     book_equity: float | None = None
@@ -370,6 +373,9 @@ class FundamentalSnapshot:
             return_on_assets=_optional_float(row.get("return_on_assets")),
             gross_npa_ratio=_optional_float(row.get("gross_npa_ratio")),
             cet1_ratio=_optional_float(row.get("cet1_ratio")),
+            profit_margin=_optional_float(row.get("profit_margin")),
+            investment_income_ratio=_optional_float(row.get("investment_income_ratio")),
+            equity_to_assets=_optional_float(row.get("equity_to_assets")),
             latest_net_income=_optional_float(row.get("latest_net_income")),
             basic_eps=_optional_float(row.get("basic_eps")),
             book_equity=_optional_float(row.get("book_equity")),
@@ -386,20 +392,54 @@ class FundamentalSnapshot:
         )
 
     def to_scorer_row(self) -> dict[str, Any]:
-        return {
+        row: dict[str, Any] = {
             "symbol": self.symbol,
+            "entity_type": self.entity_type,
             "roe": self.roe,
-            "roce": self.roce,
-            "operating_margin": self.operating_margin,
             "revenue_cagr_3y": self.revenue_cagr_3y,
             "earnings_cagr_3y": self.earnings_cagr_3y,
-            "debt_to_equity": self.debt_to_equity,
-            "interest_coverage": self.interest_coverage,
             "pe": self.pe,
             "pb": self.pb,
             "free_cash_flow_yield": self.free_cash_flow_yield,
             "volatility_1y": self.volatility_1y,
         }
+        if self.entity_type == "bank":
+            row.update(
+                {
+                    "operating_margin": self.operating_margin,
+                    "pre_tax_margin": self.pre_tax_margin,
+                    "return_on_assets": self.return_on_assets,
+                    "gross_npa_ratio": self.gross_npa_ratio,
+                    "cet1_ratio": self.cet1_ratio,
+                }
+            )
+        elif self.entity_type == "nbfc":
+            row.update(
+                {
+                    "pre_tax_margin": self.pre_tax_margin,
+                    "return_on_assets": self.return_on_assets,
+                    "debt_to_equity": self.debt_to_equity,
+                }
+            )
+        elif self.entity_type == "insurance":
+            row.update(
+                {
+                    "return_on_assets": self.return_on_assets,
+                    "profit_margin": self.profit_margin,
+                    "investment_income_ratio": self.investment_income_ratio,
+                    "equity_to_assets": self.equity_to_assets,
+                }
+            )
+        else:
+            row.update(
+                {
+                    "roce": self.roce,
+                    "operating_margin": self.operating_margin,
+                    "debt_to_equity": self.debt_to_equity,
+                    "interest_coverage": self.interest_coverage,
+                }
+            )
+        return row
 
 
 @dataclass(frozen=True)
@@ -452,7 +492,12 @@ class FundamentalCalculator:
             raise ValueError(f"Unsupported fundamental entity type: {entity_type}")
 
         selected = self._select_best(observations)
-        base_metric = "revenue" if entity_type == "non_bank" else "total_income"
+        if entity_type == "insurance":
+            base_metric = self._insurance_premium_metric(selected)
+        elif entity_type == "non_bank":
+            base_metric = "revenue"
+        else:
+            base_metric = "total_income"
         annual_ends = sorted(
             {
                 item.period_end
@@ -531,6 +576,15 @@ class FundamentalCalculator:
                 latest_income,
                 revenue_latest,
             )
+        elif entity_type == "insurance":
+            metrics = self._insurance_metrics(
+                duration,
+                instant,
+                latest_end,
+                prior_end,
+                latest_income,
+                revenue_latest,
+            )
         else:
             metrics = self._bank_metrics(
                 selected,
@@ -589,6 +643,48 @@ class FundamentalCalculator:
             "debt_to_equity": self._ratio(current_debt, current_equity),
             "interest_coverage": self._ratio(ebit, finance_cost),
             "free_cash_flow": self._float(free_cash_flow),
+        }
+
+    @staticmethod
+    def _insurance_premium_metric(observations: list[_Observation]) -> str:
+        metrics = {item.metric for item in observations}
+        life_candidates = ("net_premium_income", "gross_premium_income")
+        general_candidates = (
+            "premium_earned_net",
+            "net_premium_written",
+            "gross_premiums_written",
+        )
+        life_score = sum(candidate in metrics for candidate in life_candidates)
+        general_score = sum(candidate in metrics for candidate in general_candidates)
+        candidates = (
+            life_candidates if life_score >= general_score else general_candidates
+        )
+        for candidate in candidates:
+            if candidate in metrics:
+                return candidate
+        raise ValueError("No insurance premium metric is available")
+
+    def _insurance_metrics(
+        self,
+        duration,
+        instant,
+        latest_end,
+        prior_end,
+        latest_income,
+        premium_latest,
+    ) -> dict[str, float | None]:
+        average_assets = self._average(
+            instant("total_assets", latest_end), instant("total_assets", prior_end)
+        )
+        equity_latest = instant("total_equity", latest_end)
+        assets_latest = instant("total_assets", latest_end)
+        return {
+            "return_on_assets": self._ratio(latest_income, average_assets),
+            "profit_margin": self._ratio(latest_income, premium_latest),
+            "investment_income_ratio": self._ratio(
+                duration("investment_income"), premium_latest
+            ),
+            "equity_to_assets": self._ratio(equity_latest, assets_latest),
         }
 
     def _nbfc_metrics(

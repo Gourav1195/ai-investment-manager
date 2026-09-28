@@ -9,6 +9,16 @@ import sys
 
 import pandas as pd
 
+from .calibration import analyze_universe_backtest, build_profile_version
+from .constituents import (
+    SUPPORTED_INDICES,
+    ConstituentHistoryStore,
+    archive_current_constituents,
+    constituent_coverage,
+    import_snapshots_csv,
+)
+from .orchestration import UniverseResearchOrchestrator, resolve_orchestration_dates
+from .profile_store import ScoringProfileStore
 from .filings import FilingStore, IST, NseFinancialResultsClient
 from .explanations import ScoreExplainer, explanations_to_frame
 from .fundamentals import FundamentalCalculator, FundamentalSnapshot
@@ -45,6 +55,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--index", default="NIFTY 50", choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
     )
     universe.add_argument("--output", type=Path)
+    universe.add_argument("--database", type=Path, default=Path("work/research.db"))
+    universe.add_argument(
+        "--persist",
+        action="store_true",
+        help="Record the downloaded constituent list for historical benchmarking",
+    )
+    universe.add_argument(
+        "--effective-date",
+        help="Membership effective date for --persist (ISO date, default today)",
+    )
 
     prices = subcommands.add_parser("prices", help="Download historical daily prices")
     prices.add_argument(
@@ -196,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compare forward returns with an equal-weight Nifty constituent portfolio",
     )
     walkforward.add_argument(
+        "--historical-constituents",
+        action="store_true",
+        help="Use recorded Nifty constituent snapshots on or before each as-of date",
+    )
+    walkforward.add_argument(
         "--persist",
         action="store_true",
         help="Save walk-forward snapshots to the research database",
@@ -209,6 +234,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--explain",
         action="store_true",
         help="Attach deterministic score explanations grounded in source filings",
+    )
+    walkforward.add_argument(
+        "--profile-version",
+        type=int,
+        help="Score with a saved scoring profile version from the research database",
+    )
+    walkforward.add_argument(
+        "--use-active-profile",
+        action="store_true",
+        help="Score with the activated scoring profile version",
     )
     walkforward.add_argument("--output", type=Path)
 
@@ -232,14 +267,396 @@ def build_parser() -> argparse.ArgumentParser:
         help="Save the explanation to the research database",
     )
     explain.add_argument("--output", type=Path)
+
+    dashboard = subcommands.add_parser(
+        "dashboard",
+        help="Launch the Streamlit research dashboard for persisted snapshots",
+    )
+    dashboard.add_argument("--database", type=Path, default=Path("work/research.db"))
+    dashboard.add_argument("--port", type=int, default=8501)
+
+    constituents = subcommands.add_parser(
+        "constituents",
+        help="Manage historical Nifty constituent snapshots",
+    )
+    constituents_sub = constituents.add_subparsers(
+        dest="constituents_command", required=True
+    )
+    constituents_list = constituents_sub.add_parser(
+        "list", help="List recorded constituent snapshots"
+    )
+    constituents_list.add_argument("--database", type=Path, default=Path("work/research.db"))
+    constituents_list.add_argument("--index")
+    constituents_list.add_argument("--output", type=Path)
+
+    constituents_import = constituents_sub.add_parser(
+        "import", help="Import constituent snapshots from CSV"
+    )
+    constituents_import.add_argument("input", type=Path)
+    constituents_import.add_argument(
+        "--index", required=True, choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    constituents_import.add_argument("--database", type=Path, default=Path("work/research.db"))
+    constituents_import.add_argument(
+        "--source", default="csv_import", help="Lineage label stored with each snapshot"
+    )
+
+    constituents_coverage = constituents_sub.add_parser(
+        "coverage", help="Check constituent snapshot coverage for as-of dates"
+    )
+    constituents_coverage.add_argument(
+        "--index", required=True, choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    constituents_coverage.add_argument(
+        "--dates", nargs="+", required=True, help="ISO as-of dates to check"
+    )
+    constituents_coverage.add_argument("--database", type=Path, default=Path("work/research.db"))
+    constituents_coverage.add_argument("--output", type=Path)
+
+    constituents_archive = constituents_sub.add_parser(
+        "archive",
+        help="Record current official Nifty constituents for the latest fiscal quarter-end",
+    )
+    constituents_archive.add_argument("--database", type=Path, default=Path("work/research.db"))
+    constituents_archive.add_argument(
+        "--index",
+        default="NIFTY 50",
+        choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"],
+    )
+    constituents_archive.add_argument(
+        "--all-indices",
+        action="store_true",
+        help="Archive NIFTY 50, NIFTY 100, and NIFTY 200 in one run",
+    )
+    constituents_archive.add_argument(
+        "--effective-date",
+        help="Membership effective date (ISO date, default latest fiscal quarter-end)",
+    )
+    constituents_archive.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace an existing snapshot for the effective date",
+    )
+
+    profiles = subcommands.add_parser(
+        "profiles",
+        help="Manage versioned scoring profile thresholds",
+    )
+    profiles_sub = profiles.add_subparsers(dest="profiles_command", required=True)
+    profiles_list = profiles_sub.add_parser("list", help="List saved scoring profile versions")
+    profiles_list.add_argument("--database", type=Path, default=Path("work/research.db"))
+    profiles_list.add_argument("--output", type=Path)
+
+    profiles_apply = profiles_sub.add_parser(
+        "apply",
+        help="Save a reviewed calibration as a new scoring profile version",
+    )
+    profiles_apply.add_argument(
+        "--version", type=int, required=True, help="New profile version number"
+    )
+    profiles_apply.add_argument("--database", type=Path, default=Path("work/research.db"))
+    profiles_apply.add_argument(
+        "--input",
+        type=Path,
+        help="Reviewed threshold CSV from calibrate --report thresholds",
+    )
+    profiles_apply.add_argument(
+        "--from-calibration",
+        action="store_true",
+        help="Build the profile from persisted research snapshots",
+    )
+    profiles_apply.add_argument(
+        "--min-sample-size",
+        type=int,
+        default=5,
+        help="Minimum observations required before replacing a metric threshold",
+    )
+    profiles_apply.add_argument(
+        "--low-quantile", type=float, default=0.25, help="Lower quantile for calibration"
+    )
+    profiles_apply.add_argument(
+        "--high-quantile", type=float, default=0.75, help="Upper quantile for calibration"
+    )
+    profiles_apply.add_argument(
+        "--activate",
+        action="store_true",
+        help="Activate the new profile version after saving it",
+    )
+
+    profiles_activate = profiles_sub.add_parser(
+        "activate", help="Activate a saved scoring profile version"
+    )
+    profiles_activate.add_argument("--version", type=int, required=True)
+    profiles_activate.add_argument("--database", type=Path, default=Path("work/research.db"))
+
+    calibrate = subcommands.add_parser(
+        "calibrate",
+        help="Analyze persisted universe backtests and suggest metric thresholds",
+    )
+    calibrate.add_argument("--database", type=Path, default=Path("work/research.db"))
+    calibrate.add_argument(
+        "--low-quantile", type=float, default=0.25, help="Lower quantile for suggestions"
+    )
+    calibrate.add_argument(
+        "--high-quantile", type=float, default=0.75, help="Upper quantile for suggestions"
+    )
+    calibrate.add_argument(
+        "--report",
+        choices=["all", "buckets", "thresholds"],
+        default="all",
+        help="Which calibration tables to print",
+    )
+    calibrate.add_argument("--output", type=Path)
+
+    orchestrate = subcommands.add_parser(
+        "orchestrate",
+        help="Run scheduled Nifty universe walk-forward research",
+    )
+    orchestrate.add_argument(
+        "--index", default="NIFTY 50", choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"]
+    )
+    orchestrate.add_argument("--database", type=Path, default=Path("work/research.db"))
+    orchestrate.add_argument("--as-of-dates", nargs="+")
+    orchestrate.add_argument("--quarter-range-start")
+    orchestrate.add_argument("--quarter-range-end")
+    orchestrate.add_argument("--prices-start", required=True)
+    orchestrate.add_argument("--prices-end", required=True)
+    orchestrate.add_argument(
+        "--benchmark-index",
+        default="NIFTY 50",
+        choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"],
+    )
+    orchestrate.add_argument("--forward-days", type=int, default=365)
+    orchestrate.add_argument(
+        "--cadence",
+        default="quarterly",
+        choices=["annual", "quarterly"],
+    )
+    orchestrate.add_argument(
+        "--archive-constituents",
+        action="store_true",
+        help="Archive current Nifty membership before evaluation",
+    )
+    orchestrate.add_argument(
+        "--historical-constituents",
+        action="store_true",
+        help="Use recorded constituent snapshots for portfolio benchmarking",
+    )
+    orchestrate.add_argument(
+        "--benchmark-portfolio",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    orchestrate.add_argument("--persist", action="store_true", default=True)
+    orchestrate.add_argument("--no-persist", action="store_false", dest="persist")
+    orchestrate.add_argument("--explain", action="store_true")
+    orchestrate.add_argument("--profile-version", type=int)
+    orchestrate.add_argument("--use-active-profile", action="store_true")
+    orchestrate.add_argument(
+        "--max-symbols",
+        type=int,
+        help="Limit universe size for testing or partial runs",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "dashboard":
+            return launch_dashboard(args.database, args.port)
+        if args.command == "constituents":
+            store = ConstituentHistoryStore(args.database)
+            if args.constituents_command == "list":
+                data = store.list_snapshots(args.index)
+            elif args.constituents_command == "import":
+                imported = import_snapshots_csv(
+                    store,
+                    args.input,
+                    index_name=args.index,
+                    source=args.source,
+                )
+                counts = store.counts()
+                print(
+                    f"Imported {imported} constituent snapshots from {args.input}. "
+                    f"Total constituent snapshots: {counts['constituent_snapshots']}"
+                )
+                return 0
+            elif args.constituents_command == "archive":
+                effective_date = (
+                    date.fromisoformat(args.effective_date)
+                    if args.effective_date
+                    else None
+                )
+                indices = list(SUPPORTED_INDICES) if args.all_indices else [args.index]
+                results = []
+                for index_name in indices:
+                    provider = NiftyIndexUniverseProvider(index_name)
+                    results.extend(
+                        archive_current_constituents(
+                            store,
+                            provider,
+                            effective_date=effective_date,
+                            skip_existing=not args.force,
+                        )
+                    )
+                for result in results:
+                    print(
+                        f"{result.index_name} {result.effective_date}: "
+                        f"{result.status} ({result.symbol_count} symbols)"
+                    )
+                return 0
+            else:
+                dates = [date.fromisoformat(value) for value in args.dates]
+                data = constituent_coverage(store, args.index, dates)
+        elif args.command == "profiles":
+            profile_store = ScoringProfileStore(args.database)
+            if args.profiles_command == "list":
+                versions = profile_store.list_versions()
+                data = pd.DataFrame([item.__dict__ for item in versions])
+            elif args.profiles_command == "activate":
+                profile_store.activate(args.version)
+                print(f"Activated scoring profile version {args.version}")
+                return 0
+            else:
+                if args.input and args.from_calibration:
+                    raise ValueError("Provide either --input or --from-calibration")
+                if args.input:
+                    suggestions = pd.read_csv(args.input)
+                elif args.from_calibration:
+                    snapshots = ResearchStore(args.database).list_snapshots()
+                    if snapshots.empty:
+                        raise ValueError(
+                            "No persisted research snapshots are available for calibration"
+                        )
+                    suggestions = analyze_universe_backtest(
+                        snapshots,
+                        low_quantile=args.low_quantile,
+                        high_quantile=args.high_quantile,
+                    ).threshold_suggestions
+                else:
+                    raise ValueError("Provide --input or --from-calibration")
+                profiles_by_entity = build_profile_version(
+                    suggestions,
+                    min_sample_size=args.min_sample_size,
+                )
+                inserted = profile_store.save_version(
+                    args.version,
+                    profiles_by_entity,
+                    source=(
+                        f"csv:{args.input.name}"
+                        if args.input
+                        else "calibration:research_snapshots"
+                    ),
+                )
+                if args.activate:
+                    profile_store.activate(args.version)
+                print(
+                    f"Saved scoring profile version {args.version} "
+                    f"({inserted} metric thresholds)."
+                )
+                if args.activate:
+                    print(f"Activated scoring profile version {args.version}")
+                return 0
+        elif args.command == "orchestrate":
+            as_of_dates = resolve_orchestration_dates(
+                as_of_dates=args.as_of_dates,
+                quarter_range_start=args.quarter_range_start,
+                quarter_range_end=args.quarter_range_end,
+            )
+            result = UniverseResearchOrchestrator(database=args.database).run(
+                index_name=args.index,
+                as_of_dates=as_of_dates,
+                prices_start=args.prices_start,
+                prices_end=args.prices_end,
+                benchmark_index=args.benchmark_index,
+                forward_days=args.forward_days,
+                snapshot_cadence=args.cadence,
+                archive_constituents=args.archive_constituents,
+                use_historical_constituents=args.historical_constituents,
+                benchmark_portfolio=args.benchmark_portfolio,
+                persist=args.persist,
+                explain=args.explain,
+                profile_version=args.profile_version,
+                use_active_profile=args.use_active_profile,
+                max_symbols=args.max_symbols,
+            )
+            print(
+                f"Orchestrated {result.index_name}: evaluated "
+                f"{result.symbols_evaluated}/{result.symbols_requested} symbols; "
+                f"persisted {result.records_persisted} snapshots; "
+                f"skipped {len(result.skipped_symbols)} symbols."
+            )
+            if result.skipped_symbols:
+                preview = ", ".join(
+                    symbol for symbol, _message in result.skipped_symbols[:5]
+                )
+                print(f"Skipped examples: {preview}")
+            return 0
+        elif args.command == "calibrate":
+            snapshots = ResearchStore(args.database).list_snapshots()
+            if snapshots.empty:
+                raise ValueError(
+                    "No persisted research snapshots are available for calibration"
+                )
+            report = analyze_universe_backtest(
+                snapshots,
+                low_quantile=args.low_quantile,
+                high_quantile=args.high_quantile,
+            )
+            if args.report in {"all", "buckets"}:
+                print("Score bucket report")
+                print(report.score_buckets.to_string(index=False))
+            if args.report in {"all", "thresholds"}:
+                if args.report == "all":
+                    print()
+                print("Threshold suggestions")
+                print(report.threshold_suggestions.to_string(index=False))
+            if args.output:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                if args.report == "buckets":
+                    report.score_buckets.to_csv(args.output, index=False)
+                    print(f"Saved score bucket report to {args.output}")
+                elif args.report == "thresholds":
+                    report.threshold_suggestions.to_csv(args.output, index=False)
+                    print(f"Saved threshold suggestions to {args.output}")
+                else:
+                    bucket_path = args.output.with_name(
+                        f"{args.output.stem}-buckets{args.output.suffix}"
+                    )
+                    threshold_path = args.output.with_name(
+                        f"{args.output.stem}-thresholds{args.output.suffix}"
+                    )
+                    report.score_buckets.to_csv(bucket_path, index=False)
+                    report.threshold_suggestions.to_csv(threshold_path, index=False)
+                    print(
+                        f"Saved score bucket report to {bucket_path} and threshold "
+                        f"suggestions to {threshold_path}"
+                    )
+            return 0
         if args.command == "universe":
             data = NiftyIndexUniverseProvider(args.index).fetch()
+            if args.persist:
+                effective_date = (
+                    date.fromisoformat(args.effective_date)
+                    if args.effective_date
+                    else date.today()
+                )
+                constituent_store = ConstituentHistoryStore(args.database)
+                snapshot_key = constituent_store.record_snapshot(
+                    args.index,
+                    data["symbol"].tolist(),
+                    effective_date=effective_date,
+                    source="nifty_official",
+                )
+                counts = constituent_store.counts()
+                print(
+                    f"Recorded {len(data)} {args.index} constituents effective "
+                    f"{effective_date.isoformat()} (snapshot {snapshot_key[:8]}...). "
+                    f"Total constituent snapshots: {counts['constituent_snapshots']}"
+                )
+                if args.output is None:
+                    return 0
         elif args.command == "prices":
             data = YFinancePriceProvider().fetch(args.symbols, args.start, args.end)
         elif args.command == "score":
@@ -307,7 +724,12 @@ def main(argv: list[str] | None = None) -> int:
             as_of_dates = _resolve_as_of_dates(args)
             portfolio_symbols = _resolve_portfolio_symbols(args)
             prices = _load_walkforward_prices(args, portfolio_symbols)
-            evaluator = WalkForwardEvaluator(filing_store=FilingStore(args.database))
+            evaluator = _build_evaluator(args)
+            constituent_store = (
+                ConstituentHistoryStore(args.database)
+                if args.benchmark_portfolio or args.historical_constituents
+                else None
+            )
             records = evaluator.evaluate(
                 args.symbols,
                 as_of_dates,
@@ -316,6 +738,8 @@ def main(argv: list[str] | None = None) -> int:
                 forward_days=args.forward_days,
                 snapshot_cadence=args.cadence,
                 portfolio_symbols=portfolio_symbols,
+                constituent_store=constituent_store,
+                use_historical_constituents=args.historical_constituents,
             )
             if args.persist:
                 research_store = ResearchStore(args.database)
@@ -328,12 +752,19 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.explain:
                     explained = _persist_explanations(
-                        records, FilingStore(args.database), research_store
+                        records,
+                        FilingStore(args.database),
+                        research_store,
+                        scorer=_build_scorer(args),
                     )
                     print(f"Persisted {explained} score explanations.")
             if args.explain and not args.persist:
                 data = explanations_to_frame(
-                    _explain_records(records, FilingStore(args.database))
+                    _explain_records(
+                        records,
+                        FilingStore(args.database),
+                        scorer=_build_scorer(args),
+                    )
                 )
             else:
                 data = (
@@ -390,7 +821,7 @@ def main(argv: list[str] | None = None) -> int:
                         "--persist requires market prices via --prices or --fetch-prices"
                     )
                 prices = _load_fundamentals_prices(args)
-                evaluator = WalkForwardEvaluator(filing_store=FilingStore(args.database))
+                evaluator = _build_evaluator(args)
                 records = evaluator.evaluate(
                     args.symbols,
                     [as_of],
@@ -408,11 +839,18 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.explain:
                     explained = _persist_explanations(
-                        records, FilingStore(args.database), research_store
+                        records,
+                        FilingStore(args.database),
+                        research_store,
+                        scorer=_build_scorer(args),
                     )
                     print(f"Persisted {explained} score explanations.")
                     data = explanations_to_frame(
-                        _explain_records(records, FilingStore(args.database))
+                        _explain_records(
+                            records,
+                            FilingStore(args.database),
+                            scorer=_build_scorer(args),
+                        )
                     )
                 else:
                     data = records_to_frame(records)
@@ -456,6 +894,31 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(data.to_string(index=False))
     return 0
+
+
+def launch_dashboard(database: Path, port: int) -> int:
+    import os
+    import subprocess
+
+    script = Path(__file__).resolve().parent / "dashboard.py"
+    env = os.environ.copy()
+    env["INVESTING_RESEARCH_DB"] = str(database.resolve())
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "streamlit",
+            "run",
+            str(script),
+            "--server.port",
+            str(port),
+            "--server.headless",
+            "true",
+        ],
+        env=env,
+        check=False,
+    )
+    return int(completed.returncode)
 
 
 def _load_fundamentals_prices(args: argparse.Namespace) -> pd.DataFrame:
@@ -516,13 +979,56 @@ def _load_walkforward_prices(
     raise ValueError("Provide --prices or --fetch-prices for walk-forward research")
 
 
-def _explain_records(records, filing_store: FilingStore):
-    explainer = ScoreExplainer()
+def _resolve_profile_version(args: argparse.Namespace) -> int | None:
+    if getattr(args, "profile_version", None):
+        return args.profile_version
+    if getattr(args, "use_active_profile", False):
+        store = ScoringProfileStore(args.database)
+        version = store.active_version()
+        if version is None:
+            raise ValueError("No active scoring profile version is configured")
+        return version
+    return None
+
+
+def _build_scorer(args: argparse.Namespace) -> LongTermScorer | None:
+    version = _resolve_profile_version(args)
+    if version is None:
+        return None
+    return LongTermScorer(
+        profile_store=ScoringProfileStore(args.database),
+        profile_version=version,
+    )
+
+
+def _build_evaluator(args: argparse.Namespace) -> WalkForwardEvaluator:
+    scorer = _build_scorer(args)
+    if scorer is None:
+        return WalkForwardEvaluator(filing_store=FilingStore(args.database))
+    return WalkForwardEvaluator(
+        filing_store=FilingStore(args.database),
+        scorer=scorer,
+    )
+
+
+def _explain_records(
+    records,
+    filing_store: FilingStore,
+    *,
+    scorer: LongTermScorer | None = None,
+):
+    explainer = ScoreExplainer(scorer=scorer or LongTermScorer())
     return [explainer.explain_record(record, filing_store) for record in records]
 
 
-def _persist_explanations(records, filing_store: FilingStore, research_store: ResearchStore) -> int:
-    explanations = _explain_records(records, filing_store)
+def _persist_explanations(
+    records,
+    filing_store: FilingStore,
+    research_store: ResearchStore,
+    *,
+    scorer: LongTermScorer | None = None,
+) -> int:
+    explanations = _explain_records(records, filing_store, scorer=scorer)
     items = [
         (
             _snapshot_key(record.evaluation_key, record.snapshot.symbol),

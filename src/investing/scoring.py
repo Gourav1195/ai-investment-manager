@@ -7,22 +7,11 @@ override the scores.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
-
 import numpy as np
 import pandas as pd
 
-Direction = Literal["higher", "lower"]
-
-
-@dataclass(frozen=True)
-class Metric:
-    column: str
-    category: str
-    direction: Direction
-    poor: float
-    strong: float
+from .profile_store import ScoringProfileStore, resolve_metrics
+from .scoring_profiles import DEFAULT_ENTITY_TYPE, Metric, metrics_for
 
 
 class LongTermScorer:
@@ -36,24 +25,31 @@ class LongTermScorer:
         "price_discipline": 0.05,
     }
 
-    METRICS = (
-        Metric("roe", "quality", "higher", 0.00, 0.25),
-        Metric("roce", "quality", "higher", 0.00, 0.30),
-        Metric("operating_margin", "quality", "higher", 0.05, 0.25),
-        Metric("revenue_cagr_3y", "growth", "higher", -0.05, 0.20),
-        Metric("earnings_cagr_3y", "growth", "higher", -0.10, 0.25),
-        Metric("debt_to_equity", "financial_strength", "lower", 2.00, 0.00),
-        Metric("interest_coverage", "financial_strength", "higher", 1.00, 10.00),
-        Metric("pe", "valuation", "lower", 50.00, 10.00),
-        Metric("pb", "valuation", "lower", 8.00, 1.00),
-        Metric("free_cash_flow_yield", "valuation", "higher", -0.02, 0.08),
-        Metric("volatility_1y", "price_discipline", "lower", 0.60, 0.15),
-    )
+    METRICS = metrics_for(DEFAULT_ENTITY_TYPE)
 
-    def __init__(self, *, minimum_coverage: float = 0.60) -> None:
+    def __init__(
+        self,
+        *,
+        minimum_coverage: float = 0.60,
+        profile_store: ScoringProfileStore | None = None,
+        profile_version: int | None = None,
+    ) -> None:
         if not 0 < minimum_coverage <= 1:
             raise ValueError("minimum_coverage must be greater than 0 and at most 1")
         self.minimum_coverage = minimum_coverage
+        self.profile_store = profile_store
+        self.profile_version = profile_version
+
+    def metrics_for(self, entity_type: str | None) -> tuple[Metric, ...]:
+        return resolve_metrics(
+            entity_type,
+            profile_store=self.profile_store,
+            profile_version=self.profile_version,
+        )
+
+    @classmethod
+    def default_metrics_for(cls, entity_type: str | None) -> tuple[Metric, ...]:
+        return metrics_for(entity_type)
 
     @property
     def required_columns(self) -> list[str]:
@@ -63,6 +59,10 @@ class LongTermScorer:
         """Return ranked research candidates from normalized decimal metrics.
 
         Percentage-like inputs use decimals: 18% ROE is represented as ``0.18``.
+        When an ``entity_type`` column is present, each row is scored with the
+        industry-specific thresholds for ``non_bank``, ``bank``, ``nbfc``, or
+        ``insurance``. When a ``ScoringProfileStore`` is configured, the active or
+        requested profile version overrides built-in thresholds.
         Missing factors reduce the reported data coverage; available category
         weights are re-normalized rather than silently treating missing data as
         either strong or poor.
@@ -85,31 +85,74 @@ class LongTermScorer:
                 f"Fundamentals contain duplicate symbols: {', '.join(duplicates)}"
             )
 
-        metric_score_columns: list[str] = []
-        available_columns: list[str] = []
-        for metric in self.METRICS:
-            if metric.column not in result:
-                result[metric.column] = np.nan
-            values = pd.to_numeric(result[metric.column], errors="coerce")
-            result[metric.column] = values
-            score_column = f"{metric.column}_score"
-            result[score_column] = self._metric_score(values, metric)
-            metric_score_columns.append(score_column)
-            available_columns.append(metric.column)
+        if "entity_type" not in result:
+            result["entity_type"] = DEFAULT_ENTITY_TYPE
+        result["entity_type"] = (
+            result["entity_type"].astype("string").str.strip().str.lower()
+        )
 
-        result["data_coverage"] = result[available_columns].notna().mean(axis=1)
-        for category in self.CATEGORY_WEIGHTS:
-            category_score_columns = [
-                f"{metric.column}_score"
-                for metric in self.METRICS
-                if metric.category == category
-            ]
-            result[f"{category}_score"] = result[category_score_columns].mean(
-                axis=1, skipna=True
+        metric_columns = sorted(
+            {
+                metric.column
+                for entity_type in result["entity_type"].dropna().unique()
+                for metric in self.metrics_for(entity_type)
+            }
+        )
+        for column in metric_columns:
+            if column not in result:
+                result[column] = np.nan
+            result[column] = pd.to_numeric(result[column], errors="coerce")
+
+        category_score_columns = {
+            category: f"{category}_score" for category in self.CATEGORY_WEIGHTS
+        }
+        for category, column in category_score_columns.items():
+            result[column] = np.nan
+
+        result["data_coverage"] = np.nan
+        result["overall_score"] = np.nan
+        result["research_view"] = "Insufficient data"
+
+        for index, row in result.iterrows():
+            entity_type = row["entity_type"] or DEFAULT_ENTITY_TYPE
+            metrics = self.metrics_for(entity_type)
+            metric_scores: dict[str, float] = {}
+            available_columns: list[str] = []
+            for metric in metrics:
+                value = row.get(metric.column)
+                if value is None or pd.isna(value):
+                    continue
+                available_columns.append(metric.column)
+                score = self._metric_score(pd.Series([float(value)]), metric).iloc[0]
+                if pd.notna(score):
+                    metric_scores[metric.column] = float(score)
+
+            coverage = (
+                len(available_columns) / len(metrics) if metrics else np.nan
+            )
+            result.at[index, "data_coverage"] = coverage
+
+            for category in self.CATEGORY_WEIGHTS:
+                category_metrics = [
+                    metric_scores[metric.column]
+                    for metric in metrics
+                    if metric.category == category
+                    and metric.column in metric_scores
+                ]
+                if category_metrics:
+                    result.at[index, category_score_columns[category]] = float(
+                        np.mean(category_metrics)
+                    )
+
+            overall = self._overall_score_from_categories(
+                {category: result.at[index, column] for category, column in category_score_columns.items()}
+            )
+            result.at[index, "overall_score"] = overall
+            result.at[index, "research_view"] = self._research_view(
+                coverage=coverage,
+                overall_score=overall,
             )
 
-        result["overall_score"] = result.apply(self._overall_score, axis=1)
-        result["research_view"] = result.apply(self._research_view, axis=1)
         result = result.sort_values(
             ["overall_score", "data_coverage", "symbol"],
             ascending=[False, False, True],
@@ -142,24 +185,22 @@ class LongTermScorer:
             score = (metric.poor - values) / (metric.poor - metric.strong)
         return score.clip(lower=0, upper=1).mul(100).where(values.notna())
 
-    def _overall_score(self, row: pd.Series) -> float:
+    def _overall_score_from_categories(self, category_scores: dict[str, float]) -> float:
         weighted_total = 0.0
         available_weight = 0.0
         for category, weight in self.CATEGORY_WEIGHTS.items():
-            value = row[f"{category}_score"]
-            if pd.notna(value):
+            value = category_scores.get(category)
+            if value is not None and pd.notna(value):
                 weighted_total += float(value) * weight
                 available_weight += weight
         if available_weight == 0:
             return np.nan
         return weighted_total / available_weight
 
-    def _research_view(self, row: pd.Series) -> str:
-        if row["data_coverage"] < self.minimum_coverage or pd.isna(
-            row["overall_score"]
-        ):
+    def _research_view(self, *, coverage: float, overall_score: float) -> str:
+        if coverage < self.minimum_coverage or pd.isna(overall_score):
             return "Insufficient data"
-        score = float(row["overall_score"])
+        score = float(overall_score)
         if score >= 75:
             return "Strong candidate"
         if score >= 60:

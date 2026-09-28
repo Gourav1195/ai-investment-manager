@@ -15,7 +15,8 @@ import pandas as pd
 from .filings import FilingStore
 from .fundamentals import FundamentalSnapshot
 from .research import ResearchRecord
-from .scoring import LongTermScorer, Metric
+from .scoring import LongTermScorer
+from .scoring_profiles import Metric
 
 EXPLANATION_VERSION = 1
 
@@ -23,10 +24,17 @@ METRIC_LABELS: dict[str, str] = {
     "roe": "ROE",
     "roce": "ROCE",
     "operating_margin": "operating margin",
+    "pre_tax_margin": "pre-tax margin",
+    "profit_margin": "profit margin on premiums",
+    "investment_income_ratio": "investment income ratio",
+    "equity_to_assets": "equity to assets",
+    "return_on_assets": "return on assets",
     "revenue_cagr_3y": "three-year revenue CAGR",
     "earnings_cagr_3y": "three-year earnings CAGR",
     "debt_to_equity": "debt to equity",
     "interest_coverage": "interest coverage",
+    "gross_npa_ratio": "gross NPA ratio",
+    "cet1_ratio": "CET1 ratio",
     "pe": "P/E",
     "pb": "P/B",
     "free_cash_flow_yield": "free cash flow yield",
@@ -93,8 +101,8 @@ class ScoreExplainer:
         filing_store: FilingStore,
     ) -> ResearchExplanation:
         row = snapshot.to_scorer_row()
-        metric_scores = _metric_scores(row)
-        drivers = _score_drivers(row, metric_scores)
+        metric_scores = _metric_scores(row, self.scorer)
+        drivers = _score_drivers(row, metric_scores, self.scorer)
         risks = _risk_flags(row, data_coverage=data_coverage, snapshot=snapshot)
         sources = filing_store.filing_summaries(snapshot.source_filing_keys)
         return ResearchExplanation(
@@ -116,9 +124,10 @@ def explanations_to_frame(
     return pd.DataFrame(materialized) if materialized else pd.DataFrame()
 
 
-def _metric_scores(row: Mapping[str, Any]) -> dict[str, float]:
+def _metric_scores(row: Mapping[str, Any], scorer: LongTermScorer) -> dict[str, float]:
     scores: dict[str, float] = {}
-    for metric in LongTermScorer.METRICS:
+    entity_type = row.get("entity_type") or "non_bank"
+    for metric in scorer.metrics_for(str(entity_type)):
         value = row.get(metric.column)
         if value is None or pd.isna(value):
             continue
@@ -131,10 +140,13 @@ def _metric_scores(row: Mapping[str, Any]) -> dict[str, float]:
 
 
 def _score_drivers(
-    row: Mapping[str, Any], metric_scores: Mapping[str, float]
+    row: Mapping[str, Any],
+    metric_scores: Mapping[str, float],
+    scorer: LongTermScorer,
 ) -> list[str]:
     contributions: list[tuple[float, str]] = []
-    for metric in LongTermScorer.METRICS:
+    entity_type = row.get("entity_type") or "non_bank"
+    for metric in scorer.metrics_for(str(entity_type)):
         score = metric_scores.get(metric.column)
         if score is None:
             continue
@@ -183,6 +195,11 @@ def _risk_flags(
         flags.append("Three-year earnings CAGR is negative.")
     if snapshot.gross_npa_ratio is not None and snapshot.gross_npa_ratio > 3.0:
         flags.append("Bank gross NPA ratio is above 3%.")
+    if snapshot.entity_type == "insurance":
+        if _value(row, "equity_to_assets") is not None and row["equity_to_assets"] < 0.06:
+            flags.append("Low equity to assets ratio below 6%.")
+        if _value(row, "profit_margin") is not None and row["profit_margin"] < 0.02:
+            flags.append("Low profit margin on premiums below 2%.")
     if snapshot.market_join_version is not None and snapshot.price is None:
         flags.append("Market metrics were requested but no point-in-time price was available.")
     if not snapshot.source_filing_keys:
@@ -194,8 +211,23 @@ def _format_metric_value(metric: Metric, value: Any) -> str:
     if value is None or pd.isna(value):
         return "n/a"
     numeric = float(value)
-    if metric.column in {"roe", "roce", "operating_margin", "revenue_cagr_3y", "earnings_cagr_3y", "free_cash_flow_yield", "volatility_1y"}:
+    if metric.column in {
+        "roe",
+        "roce",
+        "operating_margin",
+        "pre_tax_margin",
+        "profit_margin",
+        "investment_income_ratio",
+        "equity_to_assets",
+        "return_on_assets",
+        "revenue_cagr_3y",
+        "earnings_cagr_3y",
+        "free_cash_flow_yield",
+        "volatility_1y",
+    }:
         return f"{numeric:.1%}"
+    if metric.column in {"gross_npa_ratio", "cet1_ratio"}:
+        return f"{numeric:.1f}%"
     if metric.column in {"debt_to_equity", "interest_coverage", "pe", "pb"}:
         return f"{numeric:.2f}"
     return f"{numeric:.4g}"

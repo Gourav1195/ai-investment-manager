@@ -19,6 +19,9 @@ The long-term scorer accepts one row per company. Percentage-like fields must be
 ```powershell
 python -m src.investing.cli universe --index "NIFTY 50" --output work/nifty50.csv
 
+python -m src.investing.cli universe --index "NIFTY 50" `
+  --database work/research.db --persist --effective-date 2024-03-31
+
 python -m src.investing.cli prices RELIANCE INFY HDFCBANK `
   --start 2020-01-01 --end 2026-01-01 --output work/prices.csv
 
@@ -52,7 +55,8 @@ python -m src.investing.cli walkforward INFY `
   --quarter-range-start 2024-04-01 --quarter-range-end 2025-03-31 `
   --cadence quarterly --database work/research.db `
   --fetch-prices --prices-start 2023-01-01 --prices-end 2025-06-01 `
-  --benchmark-index "NIFTY 50" --benchmark-portfolio --summary --persist
+  --benchmark-index "NIFTY 50" --benchmark-portfolio --historical-constituents `
+  --summary --persist
 
 python -m src.investing.cli filings HDFCLIFE --period Quarterly `
   --database work/research.db --download-xbrl --validate-insurance
@@ -82,7 +86,8 @@ documents already stored after the mapping rules change. The current canonical l
 
 Primary facts have no XBRL dimensions. Segment and other dimensional facts are retained in the
 canonical table with `is_primary = 0`, so they cannot silently enter company-level calculations.
-Insurance remains explicit and unsupported until its filing source and taxonomy are validated.
+Insurance canonical facts and industry-specific fundamental ratios are supported when NSE
+insurance XBRL taxonomies validate successfully.
 
 ## Fundamental calculation conventions
 
@@ -130,7 +135,22 @@ The score is a research prioritization tool, not a price target:
 - `Insufficient data`: fewer than 60% of factors are present
 
 Category weights are 30% quality, 25% growth, 20% financial strength, 20% valuation, and 5%
-price discipline. Every transform and threshold is defined in `src/investing/scoring.py`.
+price discipline. Every transform and threshold is defined in `src/investing/scoring.py`
+and `src/investing/scoring_profiles.py`.
+
+Industry profiles:
+
+- `non_bank`: ROE, ROCE, operating margin, leverage, interest coverage, valuation, and
+  volatility.
+- `bank`: ROE, ROA, pre-provision operating margin, gross NPA, CET1, valuation, and
+  volatility. Prudential ratios use percentage points (1.2% NPA -> `1.2`).
+- `nbfc`: ROE, ROA, pre-tax margin, funding leverage, valuation, and volatility.
+- `insurance`: ROE, ROA, profit margin on premiums, investment income ratio, premium
+  growth, equity to assets, valuation, and volatility.
+
+When `entity_type` is present on a fundamentals row or snapshot, the scorer applies the
+matching profile automatically. Insurance premium growth is stored in `revenue_cagr_3y`
+using life or general premium metrics from archived XBRL facts.
 
 ## Market join conventions
 
@@ -173,14 +193,74 @@ python -m src.investing.cli filings HDFCLIFE --period Quarterly `
 ```
 
 The validator reports life versus general insurance concept coverage and missing core
-facts. Canonical normalization uses the same taxonomy split. Insurance-specific fundamental
-ratios and scorer integration remain future work.
+facts. Canonical normalization uses the same taxonomy split. The `fundamentals` command
+calculates ROE, ROA, profit margin on premiums, investment income ratio, premium CAGR,
+and equity to assets for validated insurance filings.
 
 ## Quarterly walk-forward reporting
 
 Use `--quarter-range-start` and `--quarter-range-end` to generate Indian fiscal quarter-end
 as-of dates. Add `--benchmark-portfolio` to compare each symbol against an equal-weight
 Nifty constituent portfolio and `--summary` for a compact report.
+
+Record historical membership with `universe --persist --effective-date`, import a CSV with
+`constituents import`, or check coverage with `constituents coverage`. Enable
+`--historical-constituents` on walk-forward runs. The evaluator uses the latest recorded
+constituent snapshot on or before each as-of date, falling back to current membership when
+no snapshot exists.
+
+Constituent CSV format:
+
+```csv
+effective_date,symbol
+2024-03-31,RELIANCE
+2024-03-31,INFY
+```
+
+## Universe calibration
+
+After persisting walk-forward research across a Nifty universe, analyze score buckets and
+review industry threshold suggestions:
+
+```powershell
+python -m src.investing.cli calibrate --database work/research.db
+
+python -m src.investing.cli calibrate --database work/research.db `
+  --report thresholds --output work/threshold-suggestions.csv
+```
+
+The `calibrate` command does not change scores automatically. It reports how research views
+correlated with forward returns and suggests poor/strong metric bounds from cross-sectional
+snapshot distributions by `entity_type`.
+
+## Scheduled constituent archival
+
+Record the current official Nifty membership for the latest fiscal quarter-end. Safe to run
+from cron because existing snapshots are skipped unless `--force` is used:
+
+```powershell
+python -m src.investing.cli constituents archive --all-indices `
+  --database work/research.db
+```
+
+## Versioned scoring profiles
+
+After reviewing calibration output, save and activate a new profile version explicitly:
+
+```powershell
+python -m src.investing.cli calibrate --database work/research.db `
+  --report thresholds --output work/threshold-suggestions.csv
+
+python -m src.investing.cli profiles apply --version 2 `
+  --input work/threshold-suggestions.csv --database work/research.db --activate
+
+python -m src.investing.cli walkforward INFY --as-of-dates 2024-05-31 `
+  --database work/research.db --fetch-prices --prices-start 2023-01-01 `
+  --prices-end 2025-06-01 --use-active-profile --persist
+```
+
+Built-in thresholds remain version 1 (`BASELINE_PROFILE_VERSION`). Saved profile versions
+override the scorer only when `--profile-version` or `--use-active-profile` is supplied.
 
 ## Score explanations
 
@@ -198,6 +278,41 @@ python -m src.investing.cli explain INFY --as-of 2024-05-31 `
 Explanations list the strongest score drivers, material risk flags, and the NSE filing
 metadata behind the underlying fundamental snapshot. They do not recalculate scores.
 
+## Research dashboard
+
+Launch a local Streamlit dashboard over persisted research snapshots:
+
+```powershell
+python -m src.investing.cli dashboard --database work/research.db
+```
+
+The dashboard reads `research_evaluations`, `research_snapshots`, `research_explanations`,
+and `research_orchestration_runs` from the SQLite research database. It shows overview counts,
+filterable snapshot tables, category scores, benchmark comparisons, grounded score
+explanations, profile version review, and orchestration run history. It does not place trades
+or recalculate scores.
+
+## Universe orchestration
+
+Run walk-forward research across an entire Nifty index in one command. Suitable for cron or
+Task Scheduler after constituent archival:
+
+```powershell
+python -m src.investing.cli constituents archive --all-indices `
+  --database work/research.db
+
+python -m src.investing.cli orchestrate --index "NIFTY 50" `
+  --quarter-range-start 2024-04-01 --quarter-range-end 2025-03-31 `
+  --prices-start 2023-01-01 --prices-end 2025-06-01 `
+  --database work/research.db --archive-constituents `
+  --historical-constituents --use-active-profile --explain --persist
+```
+
+The orchestrator evaluates each symbol independently, skips symbols without fundamentals,
+persists snapshots (and optional explanations), records a run summary, and refreshes calibration
+metrics for dashboard profile review. Use `--max-symbols` for partial test runs.
+
 ## Next data milestone
 
-Build a small research dashboard after the data and evaluation pipeline is trustworthy.
+Document example cron/Task Scheduler schedules for recurring `constituents archive` and
+`orchestrate` workflows, and expand historical constituent coverage beyond manual CSV imports.

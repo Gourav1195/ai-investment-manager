@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from src.investing.filings import FilingStore
-from src.investing.fundamentals import CanonicalFactMapper, MAPPING_VERSION
+from dataclasses import replace
+from datetime import datetime
+
+from src.investing.filings import FilingStore, IST
+from src.investing.fundamentals import CanonicalFactMapper, FundamentalCalculator, MAPPING_VERSION
+from src.investing.scoring import LongTermScorer
+from src.investing.market import snapshots_to_scorer_frame
+from tests.test_fundamental_calculator import duration, instant
 from src.investing.insurance import (
     CORE_INSURANCE_CONCEPTS,
     GENERAL_INSURANCE_CONCEPTS,
@@ -138,6 +144,78 @@ def test_insurance_filing_normalizes_into_canonical_facts(tmp_path) -> None:
     assert rows
     assert all(row["mapping_version"] == MAPPING_VERSION for row in rows)
     assert "gross_premium_income" in {row["metric"] for row in rows}
+
+
+def life_insurance_history() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for year, premium, earnings in [
+        (2022, 100.0, 8.0),
+        (2023, 115.0, 9.5),
+        (2024, 132.0, 11.0),
+        (2025, 152.0, 13.0),
+    ]:
+        rows.extend(
+            [
+                duration(
+                    "net_premium_income",
+                    premium,
+                    year,
+                    entity_type="insurance",
+                ),
+                duration(
+                    "net_income_attributable",
+                    earnings,
+                    year,
+                    entity_type="insurance",
+                ),
+            ]
+        )
+    rows.extend(
+        [
+            duration("investment_income", 20.0, 2025, entity_type="insurance"),
+            duration("basic_eps", 6.5, 2025, entity_type="insurance"),
+            instant("total_equity", 70.0, 2024, entity_type="insurance"),
+            instant("total_equity", 85.0, 2025, entity_type="insurance"),
+            instant("total_assets", 500.0, 2024, entity_type="insurance"),
+            instant("total_assets", 560.0, 2025, entity_type="insurance"),
+        ]
+    )
+    return rows
+
+
+def test_insurance_calculator_derives_premium_and_solvency_metrics() -> None:
+    snapshot = FundamentalCalculator().calculate(
+        life_insurance_history(),
+        symbol="TEST",
+        as_of=datetime(2025, 7, 1, tzinfo=IST),
+    )
+
+    assert snapshot.entity_type == "insurance"
+    assert snapshot.revenue_cagr_3y == pytest.approx(0.150, rel=0.02)
+    assert snapshot.return_on_assets == pytest.approx(13.0 / 530.0, rel=1e-2)
+    assert snapshot.profit_margin == pytest.approx(13.0 / 152.0, rel=1e-2)
+    assert snapshot.investment_income_ratio == pytest.approx(20.0 / 152.0, rel=1e-2)
+    assert snapshot.equity_to_assets == pytest.approx(85.0 / 560.0, rel=1e-2)
+    assert snapshot.roce is None
+
+
+def test_insurance_snapshot_scores_with_industry_profile() -> None:
+    snapshot = FundamentalCalculator().calculate(
+        life_insurance_history(),
+        symbol="TEST",
+        as_of=datetime(2025, 7, 1, tzinfo=IST),
+    )
+    snapshot = replace(
+        snapshot,
+        pe=16.0,
+        pb=2.0,
+        volatility_1y=0.22,
+    )
+
+    result = LongTermScorer().score(snapshots_to_scorer_frame([snapshot]))
+
+    assert result.loc[0, "symbol"] == "TEST"
+    assert result.loc[0, "research_view"] != "Insufficient data"
 
 
 def test_insurance_validation_rejects_non_insurance_entity() -> None:

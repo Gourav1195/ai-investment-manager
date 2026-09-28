@@ -430,6 +430,12 @@ source, and browser-compatible request headers; the repeated live check succeede
 - Score drivers, risk flags, filing lineage, and explanation persistence covered by
   `tests/test_explanations.py`.
 
+### 2026-09-28 — Research dashboard verification
+
+- `python -m pytest tests -q`: **53 passed**.
+- Dashboard overview, filters, snapshot summary, and explanation detail covered by
+  `tests/test_dashboard.py`.
+
 ### 2026-09-28 — Insurance canonical mapping verification
 
 - `python -m pytest tests -q`: **46 passed**.
@@ -542,16 +548,198 @@ Remaining work:
 
 - Build a small research dashboard after the data and evaluation pipeline is trustworthy.
 
+### 2026-09-28 — Research dashboard
+
+Goal:
+
+- Provide a local UI for browsing persisted research snapshots, benchmark comparisons,
+  and grounded score explanations without recalculating scores.
+
+Changes:
+
+- Added `src/investing/dashboard_data.py` with testable data-loading helpers.
+- Added `src/investing/dashboard.py` Streamlit app for overview metrics, filters,
+  snapshot tables, category charts, and explanation detail.
+- Added `dashboard` CLI command to launch Streamlit against the research database.
+- Extended `ResearchStore.list_evaluations` for evaluation-level browsing.
+- Added `tests/test_dashboard.py`.
+
+Decisions:
+
+- The dashboard is read-only and uses persisted SQLite research data only.
+- Streamlit is launched via the existing project dependency rather than a new web stack.
+- Score explanations are shown when present; the UI does not regenerate them on load.
+
+### 2026-09-28 — Industry scoring profiles and historical Nifty constituents
+
+Goal:
+
+- Apply entity-type-specific scorer thresholds and support point-in-time Nifty portfolio
+  benchmarking using recorded constituent snapshots.
+
+Changes:
+
+- Added `src/investing/scoring_profiles.py` with `non_bank`, `bank`, and `nbfc` metric
+  thresholds.
+- Updated `LongTermScorer` to score rows by `entity_type` when present.
+- Extended `FundamentalSnapshot.to_scorer_row()` with industry-specific metric mappings.
+- Added `src/investing/constituents.py` with `ConstituentHistoryStore` and
+  `resolve_portfolio_symbols`.
+- Extended walk-forward evaluation to resolve portfolio membership per as-of date.
+- Added `universe --persist` and walk-forward `--historical-constituents`.
+- Added `tests/test_scoring_profiles.py` and `tests/test_constituents.py`.
+
+Decisions:
+
+- Bank prudential ratios remain percentage points in scorer inputs to match NSE XBRL
+  reporting conventions.
+- Historical constituent snapshots are stored in the research SQLite database and selected
+  with latest-on-or-before semantics per as-of date.
+- When no historical snapshot exists, portfolio benchmarking falls back to current Nifty
+  membership.
+
+### 2026-09-28 — Insurance fundamental ratios and scorer integration
+
+Goal:
+
+- Calculate insurer-specific fundamentals from validated XBRL canonical facts and score
+  them with an insurance industry profile.
+
+Changes:
+
+- Extended `FundamentalCalculator` with insurance premium-base detection, premium CAGR,
+  ROA, profit margin on premiums, investment income ratio, and equity to assets.
+- Added `INSURANCE_METRICS` to `scoring_profiles.py` and insurance mappings in
+  `FundamentalSnapshot.to_scorer_row()`.
+- Persisted insurance ratios in `research_snapshots` (store version 4).
+- Bumped `CALCULATION_VERSION` to 2.
+- Expanded insurance and scoring profile tests.
+
+Decisions:
+
+- Life versus general premium metrics follow the same concept overlap rule as taxonomy
+  validation and canonical mapping.
+- Premium growth is stored in `revenue_cagr_3y` so walk-forward and explanation flows
+  remain entity-agnostic.
+
+### 2026-09-28 — Constituent import and universe calibration
+
+Goal:
+
+- Expand historical constituent coverage beyond single-date `universe --persist` and
+  analyze persisted Nifty universe backtests to review industry threshold settings.
+
+Changes:
+
+- Added CSV import and as-of coverage reporting in `constituents.py`.
+- Added `src/investing/calibration.py` with score bucket reports and quantile-based
+  threshold suggestions by `entity_type`.
+- Added `constituents` CLI (`list`, `import`, `coverage`) and `calibrate` CLI command.
+- Added `tests/test_calibration.py` and expanded constituent tests.
+
+Decisions:
+
+- Calibration is read-only and never mutates `scoring_profiles.py` automatically.
+- Threshold suggestions use cross-sectional quantiles from persisted snapshots; score
+  bucket reports group by `research_view`.
+- Constituent CSV import uses long format (`effective_date`, `symbol`) for auditable
+  historical membership expansion.
+
+### 2026-09-28 — Scheduled constituent archival and versioned scoring profiles
+
+Goal:
+
+- Automate recurring Nifty constituent archival and apply reviewed calibration output as
+  explicit, activatable scoring profile versions.
+
+Changes:
+
+- Added `constituents archive` for fiscal quarter-end membership recording with skip-if-exists
+  semantics suitable for cron jobs.
+- Added `src/investing/profile_store.py` with `ScoringProfileStore` for versioned thresholds.
+- Added `profiles` CLI (`list`, `apply`, `activate`) and `build_profile_version` calibration
+  merge helper.
+- Extended `LongTermScorer` with optional `profile_store` / `profile_version` resolution.
+- Added walk-forward `--profile-version` and `--use-active-profile` flags.
+- Added `tests/test_profile_store.py` and expanded constituent archive tests.
+
+Decisions:
+
+- Built-in thresholds remain baseline version 1; persisted profile versions start at 2+.
+- Profile application requires an explicit version number and optional `--activate` step.
+- Metrics with insufficient sample size keep their current thresholds during profile apply.
+
+Remaining work:
+
+- None for this milestone; see **Next milestones** below.
+
+### 2026-09-28 — Universe orchestration and profile review dashboard
+
+Goal:
+
+- Automate full Nifty universe walk-forward research runs and surface profile calibration
+  review in the research dashboard.
+
+Changes:
+
+- Added `src/investing/orchestration.py` with `UniverseResearchOrchestrator`,
+  `OrchestrationStore`, and `resolve_orchestration_dates`.
+- Added `orchestrate` CLI for quarter-range or explicit as-of date universe runs with optional
+  constituent archival, persistence, explanations, and active profile resolution.
+- Extended `dashboard.py` with **Profile review** and **Orchestration runs** tabs.
+- Extended `dashboard_data.py` with `calibration_report`, `profile_versions`, and
+  `orchestration_runs`.
+- Added `tests/test_orchestration.py` and expanded `tests/test_dashboard.py`.
+
+Decisions:
+
+- Orchestration skips symbols without fundamentals rather than failing the whole run.
+- Run summaries persist to `research_orchestration_runs` for cron-friendly audit trails.
+- Profile review in the dashboard is read-only; activation still uses the `profiles` CLI.
+
+Verification:
+
+- `python -m pytest tests -q`: **76 passed**.
+
+Remaining work:
+
+- Document example cron schedules for `constituents archive` + `orchestrate` in production.
+- Add optional run notifications when orchestration completes with skipped symbols.
+
 ## Next milestones
 
-1. Build a small research dashboard after the data and evaluation pipeline is trustworthy.
+1. Add example cron/Task Scheduler recipes for recurring archive + orchestrate workflows.
+2. Expand historical constituent coverage beyond manually imported CSV snapshots.
+
+### 2026-09-28 — Profile store and archive verification
+
+- `python -m pytest tests -q`: **72 passed**.
+- Constituent archive idempotency, profile save/activate, and scorer profile resolution
+  covered by new tests.
+
+### 2026-09-28 — Constituent and calibration verification
+
+- `python -m pytest tests -q`: **68 passed**.
+- Constituent CSV import, coverage reporting, score bucket analysis, and threshold
+  suggestions covered by new tests.
+
+### 2026-09-28 — Insurance scoring verification
+
+- `python -m pytest tests -q`: insurance calculator, scorer profile, and persistence
+  covered by expanded tests.
+
+### 2026-09-28 — Industry scoring and constituent verification
+
+- `python -m pytest tests -q`: **60 passed**.
+- Industry profile selection, bank scoring thresholds, constituent snapshot lookup, and
+  per-as-of portfolio resolution covered by new tests.
 
 ## Known limitations
 
-- Insurance canonical facts are stored but not yet used by `FundamentalCalculator` or the
-  long-term scorer.
-- Portfolio benchmarking uses current Nifty membership rather than historical index
-  constituents.
+- Threshold suggestions are advisory until manually reviewed and versioned in
+  `scoring_profiles.py`.
+- Portfolio benchmarking falls back to current Nifty membership when no historical constituent
+  snapshot exists for an as-of date.
 - The initial thresholds are general-purpose and are not yet calibrated by industry.
 - `yfinance` is an unofficial personal-research source and should not become a commercial data
   dependency.
