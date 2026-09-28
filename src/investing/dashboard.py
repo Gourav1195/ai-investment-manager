@@ -14,6 +14,8 @@ from .dashboard_data import (
     explanation_for_snapshot,
     filter_options,
     fundamental_metrics,
+    orchestration_calibration_options,
+    orchestration_calibration_summary,
     orchestration_runs,
     overview_metrics,
     profile_versions,
@@ -107,6 +109,49 @@ def main() -> None:
 
 
 def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
+    st.subheader("Latest orchestration calibration")
+    run_options = orchestration_calibration_options(database_path)
+    if not run_options:
+        st.info(
+            "No orchestration runs recorded yet. Run `orchestrate` or "
+            "`schedule run-quarterly` with `--persist` to review universe calibration."
+        )
+    else:
+        labels = {option["run_key"]: option["label"] for option in run_options}
+        selected_run = st.selectbox(
+            "Orchestration run",
+            options=list(labels.keys()),
+            format_func=lambda run_key: labels[run_key],
+        )
+        summary = orchestration_calibration_summary(
+            database_path,
+            run_key=selected_run,
+            store=store,
+        )
+        if summary is None:
+            st.warning(
+                "No persisted snapshots match this orchestration run's as-of dates."
+            )
+        else:
+            columns = st.columns(4)
+            columns[0].metric("Snapshots persisted", summary.records_persisted)
+            columns[1].metric("Symbols evaluated", summary.symbols_evaluated)
+            columns[2].metric("Skipped symbols", summary.skipped_count)
+            columns[3].metric(
+                "Calibration source",
+                summary.source,
+                help="Persisted at run time or recomputed from stored snapshots.",
+            )
+            st.caption(
+                f"{summary.index_name} | created {summary.created_at} | "
+                f"as-of dates: {', '.join(summary.as_of_dates)}"
+            )
+            _render_calibration_tables(summary.report)
+            st.info(
+                "Review threshold suggestions, export with `calibrate --report thresholds`, "
+                "then apply a new version with `profiles apply --activate`."
+            )
+
     st.subheader("Scoring profile versions")
     versions = profile_versions(database_path)
     if versions:
@@ -118,7 +163,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     else:
         st.info("No saved scoring profile versions yet. Use `profiles apply` after calibration.")
 
-    st.subheader("Calibration review")
+    st.subheader("All-snapshot calibration review")
     report = calibration_report(store)
     if report.score_buckets.empty and report.threshold_suggestions.empty:
         st.info(
@@ -127,6 +172,10 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
         )
         return
 
+    _render_calibration_tables(report)
+
+
+def _render_calibration_tables(report) -> None:
     st.markdown("**Score buckets**")
     st.dataframe(report.score_buckets, use_container_width=True, hide_index=True)
     if not report.score_buckets.empty and "avg_excess_return" in report.score_buckets:

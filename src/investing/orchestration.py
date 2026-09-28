@@ -13,7 +13,11 @@ from typing import Iterable, Iterator, Protocol
 
 import pandas as pd
 
-from .calibration import CalibrationReport, analyze_universe_backtest
+from .calibration import (
+    CalibrationReport,
+    analyze_universe_backtest,
+    serialize_calibration_report,
+)
 from .constituents import (
     ConstituentHistoryStore,
     archive_current_constituents,
@@ -33,7 +37,7 @@ from .research import (
 from .scoring import LongTermScorer
 
 
-ORCHESTRATION_STORE_VERSION = 1
+ORCHESTRATION_STORE_VERSION = 2
 
 
 class PriceHistory(Protocol):
@@ -77,9 +81,10 @@ class OrchestrationStore:
                     benchmark_index,
                     forward_days,
                     archive_status,
+                    calibration_json,
                     store_version,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.run_key,
@@ -92,6 +97,11 @@ class OrchestrationStore:
                     benchmark_index,
                     forward_days,
                     result.archive_status,
+                    (
+                        serialize_calibration_report(result.calibration)
+                        if result.calibration is not None
+                        else None
+                    ),
                     ORCHESTRATION_STORE_VERSION,
                     created_at,
                 ),
@@ -136,10 +146,22 @@ class OrchestrationStore:
                     benchmark_index TEXT NOT NULL,
                     forward_days INTEGER NOT NULL,
                     archive_status TEXT NOT NULL,
+                    calibration_json TEXT,
                     store_version INTEGER NOT NULL,
                     created_at TEXT NOT NULL
                 );
                 """)
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(research_orchestration_runs)"
+                )
+            }
+            if "calibration_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE research_orchestration_runs "
+                    "ADD COLUMN calibration_json TEXT"
+                )
 
 
 class UniverseResearchOrchestrator:
@@ -262,7 +284,9 @@ class UniverseResearchOrchestrator:
         calibration = None
         if records_persisted:
             snapshots = self.research_store.list_snapshots()
-            calibration = analyze_universe_backtest(snapshots)
+            run_snapshots = _snapshots_for_run(snapshots, as_of_dates)
+            if not run_snapshots.empty:
+                calibration = analyze_universe_backtest(run_snapshots)
 
         result = UniverseRunResult(
             run_key=_run_key(index_name, as_of_dates, symbols),
@@ -357,6 +381,25 @@ def _parse_as_of(value: str) -> datetime:
             parsed = datetime.combine(parsed.date(), time.max)
         parsed = parsed.replace(tzinfo=IST)
     return parsed.astimezone(IST)
+
+
+def _snapshots_for_run(
+    snapshots: pd.DataFrame,
+    as_of_dates: list[datetime],
+) -> pd.DataFrame:
+    if snapshots.empty:
+        return snapshots
+    normalized_dates = {_normalize_as_of_date(as_of.isoformat()) for as_of in as_of_dates}
+    frame = snapshots.copy()
+    frame["_as_of_key"] = frame["as_of"].map(_normalize_as_of_date)
+    return frame[frame["_as_of_key"].isin(normalized_dates)].drop(columns="_as_of_key")
+
+
+def _normalize_as_of_date(value: object) -> str:
+    text = str(value).strip()
+    if "T" in text:
+        return text.split("T", 1)[0]
+    return text
 
 
 def _run_key(index_name: str, as_of_dates: list[datetime], symbols: list[str]) -> str:

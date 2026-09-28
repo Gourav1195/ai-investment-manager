@@ -380,6 +380,11 @@ python -m src.investing.cli orchestrate --index "NIFTY 50" `
 See [`docs/india_research_scheduling.md`](india_research_scheduling.md) for file and SMTP
 configuration via environment variables.
 
+The **Profile review** tab now includes the latest orchestration run calibration summary:
+score buckets, threshold suggestions, skipped-symbol counts, and a reminder to apply reviewed
+profiles with `profiles apply --activate`. Older runs without persisted calibration are
+recomputed from matching snapshots.
+
 ## Next data milestone
 
-Surface post-orchestration calibration summaries directly in the dashboard profile review tab.
+Add profile-version diffing in the dashboard before activating calibrated thresholds.

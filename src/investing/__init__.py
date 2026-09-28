@@ -40,7 +40,13 @@ from .scheduling import (
     rolling_quarter_range,
     run_quarterly_research,
 )
-from .dashboard_data import overview_metrics, snapshot_summary_frame
+from .dashboard_data import (
+    OrchestrationCalibrationSummary,
+    orchestration_calibration_options,
+    orchestration_calibration_summary,
+    overview_metrics,
+    snapshot_summary_frame,
+)
 from .scoring_profiles import INDUSTRY_PROFILES, metrics_for
 from .explanations import ResearchExplanation, ScoreExplainer, explanations_to_frame
 from .filings import FilingStore, NseFinancialResultsClient
@@ -87,6 +93,9 @@ __all__ = [
     "UniverseResearchOrchestrator",
     "UniverseRunResult",
     "INDUSTRY_PROFILES",
+    "OrchestrationCalibrationSummary",
+    "orchestration_calibration_options",
+    "orchestration_calibration_summary",
     "overview_metrics",
     "QuarterlyResearchSchedule",
     "quarterly_schedule_from_env",

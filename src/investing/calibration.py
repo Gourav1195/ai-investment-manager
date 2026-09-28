@@ -8,6 +8,7 @@ behaved in historical walk-forward runs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 
 import pandas as pd
 
@@ -18,6 +19,26 @@ from .scoring_profiles import INDUSTRY_PROFILES, Metric, metrics_for
 class CalibrationReport:
     score_buckets: pd.DataFrame
     threshold_suggestions: pd.DataFrame
+
+
+def serialize_calibration_report(report: CalibrationReport) -> str:
+    """Serialize a calibration report for SQLite persistence."""
+
+    payload = {
+        "score_buckets": report.score_buckets.to_dict(orient="records"),
+        "threshold_suggestions": report.threshold_suggestions.to_dict(orient="records"),
+    }
+    return json.dumps(payload)
+
+
+def deserialize_calibration_report(payload: str) -> CalibrationReport:
+    """Restore a calibration report from persisted JSON."""
+
+    data = json.loads(payload)
+    return CalibrationReport(
+        score_buckets=pd.DataFrame(data.get("score_buckets", [])),
+        threshold_suggestions=pd.DataFrame(data.get("threshold_suggestions", [])),
+    )
 
 
 def analyze_universe_backtest(

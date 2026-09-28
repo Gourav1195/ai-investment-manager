@@ -87,3 +87,28 @@ def test_universe_orchestrator_skips_missing_symbols(tmp_path) -> None:
     assert result.records_persisted == 1
     assert len(result.skipped_symbols) == 1
     assert result.skipped_symbols[0][0] == "MISSING"
+
+
+def test_orchestrator_persists_calibration_summary(tmp_path) -> None:
+    orchestrator = UniverseResearchOrchestrator(
+        database=tmp_path / "research.db",
+        universe_provider=FakeUniverseProvider(),
+        price_provider=FakePriceProvider(),
+        filing_store=SelectiveFilingStore(),
+    )
+    as_of = datetime(2025, 7, 1, tzinfo=IST)
+
+    result = orchestrator.run(
+        as_of_dates=[as_of],
+        prices_start="2024-01-01",
+        prices_end="2026-01-01",
+        persist=True,
+        benchmark_portfolio=False,
+        use_historical_constituents=False,
+    )
+
+    assert result.calibration is not None
+    assert not result.calibration.score_buckets.empty
+
+    runs = OrchestrationStore(tmp_path / "research.db").list_runs()
+    assert runs.iloc[0]["calibration_json"]

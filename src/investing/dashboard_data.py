@@ -6,15 +6,18 @@ dependencies so they can be tested independently of Streamlit.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any, Mapping
 
-import json
-
 import pandas as pd
 
-from .calibration import CalibrationReport, analyze_universe_backtest
+from .calibration import (
+    CalibrationReport,
+    analyze_universe_backtest,
+    deserialize_calibration_report,
+)
 from .orchestration import OrchestrationStore
 from .profile_store import ProfileVersionSummary, ScoringProfileStore
 from .research import ResearchStore
@@ -46,6 +49,19 @@ CATEGORY_COLUMNS = [
     ("valuation_score", "Valuation"),
     ("price_discipline_score", "Price discipline"),
 ]
+
+@dataclass(frozen=True)
+class OrchestrationCalibrationSummary:
+    run_key: str
+    created_at: str
+    index_name: str
+    symbols_evaluated: int
+    records_persisted: int
+    skipped_count: int
+    as_of_dates: tuple[str, ...]
+    report: CalibrationReport
+    source: str
+
 
 FUNDAMENTAL_COLUMNS = [
     ("roe", "ROE"),
@@ -205,6 +221,69 @@ def profile_versions(database: str | Path) -> list[ProfileVersionSummary]:
     return ScoringProfileStore(database).list_versions()
 
 
+def orchestration_calibration_options(database: str | Path) -> list[dict[str, str]]:
+    """Return orchestration runs that can be reviewed in the profile tab."""
+
+    runs = OrchestrationStore(database).list_runs()
+    if runs.empty:
+        return []
+    options: list[dict[str, str]] = []
+    for _, row in runs.iterrows():
+        skipped_count = _count_skipped(row.get("skipped_symbols_json"))
+        label = (
+            f"{row['created_at']} | {row['index_name']} | "
+            f"{row['records_persisted']} snapshots | {skipped_count} skipped"
+        )
+        options.append({"run_key": str(row["run_key"]), "label": label})
+    return options
+
+
+def orchestration_calibration_summary(
+    database: str | Path,
+    *,
+    run_key: str | None = None,
+    store: ResearchStore | None = None,
+) -> OrchestrationCalibrationSummary | None:
+    """Load a persisted or recomputed calibration report for an orchestration run."""
+
+    runs = OrchestrationStore(database).list_runs()
+    if runs.empty:
+        return None
+    if run_key is None:
+        row = runs.iloc[0]
+    else:
+        matches = runs[runs["run_key"] == run_key]
+        if matches.empty:
+            return None
+        row = matches.iloc[0]
+
+    as_of_dates = _parse_as_of_dates(row.get("as_of_dates_json"))
+    calibration_payload = row.get("calibration_json")
+    if calibration_payload and not pd.isna(calibration_payload):
+        report = deserialize_calibration_report(str(calibration_payload))
+        source = "persisted"
+    else:
+        research_store = store or ResearchStore(database)
+        snapshots = research_store.list_snapshots()
+        run_snapshots = _snapshots_for_as_of_dates(snapshots, as_of_dates)
+        if run_snapshots.empty:
+            return None
+        report = analyze_universe_backtest(run_snapshots)
+        source = "recomputed"
+
+    return OrchestrationCalibrationSummary(
+        run_key=str(row["run_key"]),
+        created_at=str(row["created_at"]),
+        index_name=str(row["index_name"]),
+        symbols_evaluated=int(row["symbols_evaluated"]),
+        records_persisted=int(row["records_persisted"]),
+        skipped_count=_count_skipped(row.get("skipped_symbols_json")),
+        as_of_dates=tuple(as_of_dates),
+        report=report,
+        source=source,
+    )
+
+
 def orchestration_runs(database: str | Path) -> pd.DataFrame:
     runs = OrchestrationStore(database).list_runs()
     if runs.empty:
@@ -288,14 +367,40 @@ def _format_return(value: Any) -> str | None:
     return f"{float(value) * 100:.1f}%"
 
 
-def _format_as_of_dates(value: Any) -> str:
+def _parse_as_of_dates(value: Any) -> list[str]:
     try:
         parsed = json.loads(str(value))
     except json.JSONDecodeError:
-        return str(value)
+        return []
     if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed]
+
+
+def _snapshots_for_as_of_dates(
+    snapshots: pd.DataFrame,
+    as_of_dates: list[str],
+) -> pd.DataFrame:
+    if snapshots.empty or not as_of_dates:
+        return snapshots.iloc[0:0]
+    normalized_dates = {_normalize_as_of_date(value) for value in as_of_dates}
+    frame = snapshots.copy()
+    frame["_as_of_key"] = frame["as_of"].map(_normalize_as_of_date)
+    return frame[frame["_as_of_key"].isin(normalized_dates)].drop(columns="_as_of_key")
+
+
+def _normalize_as_of_date(value: object) -> str:
+    text = str(value).strip()
+    if "T" in text:
+        return text.split("T", 1)[0]
+    return text
+
+
+def _format_as_of_dates(value: Any) -> str:
+    parsed = _parse_as_of_dates(value)
+    if not parsed:
         return str(value)
-    return ", ".join(str(item) for item in parsed)
+    return ", ".join(parsed)
 
 
 def _count_skipped(value: Any) -> int:

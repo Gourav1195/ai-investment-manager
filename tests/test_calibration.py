@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.investing.calibration import analyze_universe_backtest, threshold_suggestions
+from src.investing.calibration import (
+    analyze_universe_backtest,
+    deserialize_calibration_report,
+    serialize_calibration_report,
+    threshold_suggestions,
+)
 
 
 def test_score_bucket_report_ranks_views_by_forward_returns() -> None:
@@ -61,3 +66,25 @@ def test_threshold_suggestions_use_entity_type_profiles() -> None:
     npa = suggestions.loc[suggestions["metric"] == "gross_npa_ratio"].iloc[0]
     assert npa["direction"] == "lower"
     assert npa["suggested_poor"] > npa["suggested_strong"]
+
+
+def test_calibration_report_round_trips_through_json() -> None:
+    snapshots = pd.DataFrame(
+        [
+            {
+                "symbol": "AAA",
+                "research_view": "Watchlist",
+                "forward_return": 0.05,
+                "excess_forward_return": 0.01,
+                "entity_type": "non_bank",
+                "roe": 0.12,
+            }
+        ]
+    )
+    report = analyze_universe_backtest(snapshots)
+    restored = deserialize_calibration_report(serialize_calibration_report(report))
+
+    assert list(restored.score_buckets.columns) == list(report.score_buckets.columns)
+    assert list(restored.threshold_suggestions.columns) == list(
+        report.threshold_suggestions.columns
+    )

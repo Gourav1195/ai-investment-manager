@@ -788,10 +788,34 @@ Verification:
 
 - `python -m pytest tests -q`: **92 passed**.
 
+### 2026-09-28 — Dashboard orchestration calibration review
+
+Goal:
+
+- Surface post-orchestration calibration summaries in the dashboard profile review workflow.
+
+Changes:
+
+- Persist orchestration calibration JSON on `research_orchestration_runs`.
+- Scope orchestration-time calibration to the run's as-of dates instead of all stored snapshots.
+- Added `orchestration_calibration_summary` and `orchestration_calibration_options` dashboard
+  helpers.
+- Updated the dashboard **Profile review** tab with orchestration run selection, run metrics,
+  and per-run score bucket / threshold tables.
+- Added calibration serialization helpers and expanded dashboard/orchestration tests.
+
+Decisions:
+
+- Older orchestration runs without persisted calibration are recomputed from matching snapshots.
+- The profile tab keeps a separate all-snapshot calibration section for global review.
+
+Verification:
+
+- `python -m pytest tests -q`: **95 passed**.
+
 ## Next milestones
 
-1. Review persisted orchestration calibration output in the dashboard profile tab after each
-   scheduled run.
+1. Add profile-version diffing in the dashboard before activating calibrated thresholds.
 
 ### 2026-09-28 — Profile store and archive verification
 
