@@ -21,6 +21,14 @@ from .orchestration import (
     resolve_orchestration_dates,
 )
 from .profile_store import ScoringProfileStore, resolve_metrics
+from .scheduling import (
+    QuarterlyResearchSchedule,
+    quarterly_schedule_from_env,
+    render_schedule_recipes,
+    resolve_quarterly_windows,
+    rolling_quarter_range,
+    run_quarterly_research,
+)
 from .dashboard_data import overview_metrics, snapshot_summary_frame
 from .scoring_profiles import INDUSTRY_PROFILES, metrics_for
 from .explanations import ResearchExplanation, ScoreExplainer, explanations_to_frame
@@ -62,6 +70,12 @@ __all__ = [
     "UniverseRunResult",
     "INDUSTRY_PROFILES",
     "overview_metrics",
+    "QuarterlyResearchSchedule",
+    "quarterly_schedule_from_env",
+    "render_schedule_recipes",
+    "resolve_quarterly_windows",
+    "rolling_quarter_range",
+    "run_quarterly_research",
     "resolve_portfolio_symbols",
     "metrics_for",
     "snapshot_summary_frame",

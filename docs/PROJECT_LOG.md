@@ -703,13 +703,41 @@ Verification:
 
 Remaining work:
 
-- Document example cron schedules for `constituents archive` + `orchestrate` in production.
 - Add optional run notifications when orchestration completes with skipped symbols.
+
+### 2026-09-28 — Research scheduling recipes
+
+Goal:
+
+- Document and automate recurring constituent archival plus quarterly universe orchestration
+  for cron and Windows Task Scheduler.
+
+Changes:
+
+- Added `src/investing/scheduling.py` with rolling quarter windows, env-based schedule
+  configuration, and `run_quarterly_research`.
+- Added `schedule show` and `schedule run-quarterly` CLI commands.
+- Added `scripts/india-research-quarterly.ps1`, `scripts/india-research-quarterly.sh`, and
+  `scripts/india-research-quarterly.env.example`.
+- Added `docs/india_research_scheduling.md`.
+- Added `tests/test_scheduling.py`.
+
+Decisions:
+
+- Wrapper scripts delegate to the CLI so scheduling logic stays testable in Python.
+- `schedule run-quarterly` archives constituents before orchestration but does not pass
+  `--archive-constituents` to orchestrate to avoid duplicate archive attempts.
+- Generated cron examples use calendar-quarter triggers; operators should adjust for IST and
+  data availability.
+
+Verification:
+
+- `python -m pytest tests -q`: **81 passed**.
 
 ## Next milestones
 
-1. Add example cron/Task Scheduler recipes for recurring archive + orchestrate workflows.
-2. Expand historical constituent coverage beyond manually imported CSV snapshots.
+1. Expand historical constituent coverage beyond manually imported CSV snapshots.
+2. Add optional notifications when orchestration completes with skipped symbols.
 
 ### 2026-09-28 — Profile store and archive verification
 

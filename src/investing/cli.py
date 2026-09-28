@@ -19,6 +19,12 @@ from .constituents import (
 )
 from .orchestration import UniverseResearchOrchestrator, resolve_orchestration_dates
 from .profile_store import ScoringProfileStore
+from .scheduling import (
+    QuarterlyResearchSchedule,
+    quarterly_schedule_from_env,
+    render_schedule_recipes,
+    run_quarterly_research,
+)
 from .filings import FilingStore, IST, NseFinancialResultsClient
 from .explanations import ScoreExplainer, explanations_to_frame
 from .fundamentals import FundamentalCalculator, FundamentalSnapshot
@@ -457,6 +463,70 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Limit universe size for testing or partial runs",
     )
+
+    schedule = subcommands.add_parser(
+        "schedule",
+        help="Recurring archive and orchestration schedule helpers",
+    )
+    schedule_sub = schedule.add_subparsers(dest="schedule_command", required=True)
+    schedule_show = schedule_sub.add_parser(
+        "show",
+        help="Print cron and Task Scheduler recipes",
+    )
+    schedule_run = schedule_sub.add_parser(
+        "run-quarterly",
+        help="Archive constituents and run rolling quarterly orchestration",
+    )
+    for parser in (schedule_show, schedule_run):
+        parser.add_argument("--database", type=Path, default=Path("work/research.db"))
+        parser.add_argument(
+            "--index",
+            default="NIFTY 50",
+            choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"],
+        )
+        parser.add_argument(
+            "--benchmark-index",
+            default="NIFTY 50",
+            choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"],
+        )
+        parser.add_argument("--quarters", type=int, default=4)
+        parser.add_argument("--price-lookback-years", type=int, default=3)
+        parser.add_argument("--forward-days", type=int, default=365)
+        parser.add_argument(
+            "--archive-all-indices",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+        parser.add_argument(
+            "--archive-constituents",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+        parser.add_argument(
+            "--historical-constituents",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+        parser.add_argument(
+            "--use-active-profile",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+        parser.add_argument(
+            "--explain",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+        parser.add_argument(
+            "--persist",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+    schedule_show.add_argument(
+        "--project-root",
+        default=".",
+        help="Repository path used in generated scheduler commands",
+    )
     return parser
 
 
@@ -557,6 +627,29 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.activate:
                     print(f"Activated scoring profile version {args.version}")
+                return 0
+        elif args.command == "schedule":
+            schedule = _quarterly_schedule_from_args(args)
+            if args.schedule_command == "show":
+                print(
+                    render_schedule_recipes(
+                        schedule,
+                        project_root=args.project_root,
+                    )
+                )
+                return 0
+            if args.schedule_command == "run-quarterly":
+                result = run_quarterly_research(schedule)
+                print(
+                    f"Quarterly schedule completed for {result.index_name}: evaluated "
+                    f"{result.symbols_evaluated}/{result.symbols_requested} symbols; "
+                    f"persisted {result.records_persisted} snapshots."
+                )
+                if result.skipped_symbols:
+                    preview = ", ".join(
+                        symbol for symbol, _message in result.skipped_symbols[:5]
+                    )
+                    print(f"Skipped examples: {preview}")
                 return 0
         elif args.command == "orchestrate":
             as_of_dates = resolve_orchestration_dates(
@@ -945,6 +1038,28 @@ def _resolve_as_of_dates(args: argparse.Namespace) -> list[datetime]:
         return [_parse_as_of(value) for value in args.as_of_dates]
     raise ValueError(
         "Provide --as-of-dates or both --quarter-range-start and --quarter-range-end"
+    )
+
+
+def _quarterly_schedule_from_args(args: argparse.Namespace) -> QuarterlyResearchSchedule:
+    defaults = quarterly_schedule_from_env()
+    return QuarterlyResearchSchedule(
+        database=args.database or defaults.database,
+        index_name=args.index or defaults.index_name,
+        benchmark_index=args.benchmark_index or defaults.benchmark_index,
+        quarters=args.quarters if args.quarters is not None else defaults.quarters,
+        price_lookback_years=(
+            args.price_lookback_years
+            if args.price_lookback_years is not None
+            else defaults.price_lookback_years
+        ),
+        forward_days=args.forward_days if args.forward_days is not None else defaults.forward_days,
+        archive_all_indices=args.archive_all_indices,
+        archive_constituents=args.archive_constituents,
+        historical_constituents=args.historical_constituents,
+        use_active_profile=args.use_active_profile,
+        explain=args.explain,
+        persist=args.persist,
     )
 
 

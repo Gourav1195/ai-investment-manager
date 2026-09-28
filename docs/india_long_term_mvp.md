@@ -312,7 +312,23 @@ The orchestrator evaluates each symbol independently, skips symbols without fund
 persists snapshots (and optional explanations), records a run summary, and refreshes calibration
 metrics for dashboard profile review. Use `--max-symbols` for partial test runs.
 
+## Scheduled research workflows
+
+Recurring archive and orchestration recipes live in
+[`docs/india_research_scheduling.md`](india_research_scheduling.md).
+
+```powershell
+python -m src.investing.cli schedule show --database work/research.db
+
+python -m src.investing.cli schedule run-quarterly --database work/research.db
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\india-research-quarterly.ps1
+```
+
+Copy `scripts/india-research-quarterly.env.example` to configure database paths, index
+selection, and feature flags for cron or Task Scheduler wrappers.
+
 ## Next data milestone
 
-Document example cron/Task Scheduler schedules for recurring `constituents archive` and
-`orchestrate` workflows, and expand historical constituent coverage beyond manual CSV imports.
+Expand historical constituent coverage beyond manually imported CSV snapshots and official
+archive downloads.
