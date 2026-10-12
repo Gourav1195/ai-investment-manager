@@ -162,3 +162,8 @@ ehthumbs.db
 Thumbs.db
 
 TODO
+
+# Local portfolio and Kite credentials
+work/portfolio.db
+work/kite.local.json
+kite.local.json

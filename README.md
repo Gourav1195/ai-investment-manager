@@ -7,6 +7,8 @@
 > The first research-only module ranks companies with transparent quality, growth, financial
 > strength, valuation, and price-discipline factors. It does not place orders. See
 > [`docs/india_long_term_mvp.md`](docs/india_long_term_mvp.md) for commands and data contracts.
+> A **Zerodha portfolio tracker** (Kite equities + Coin mutual funds) is documented in
+> [`docs/zerodha_portfolio_windows.md`](docs/zerodha_portfolio_windows.md).
 > Project decisions, completed work, verification, and next milestones are maintained in
 > [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
 

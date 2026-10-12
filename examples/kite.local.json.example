@@ -1,0 +1,5 @@
+{
+  "api_key": "your_kite_connect_api_key",
+  "api_secret": "your_kite_connect_api_secret",
+  "access_token": "daily_access_token_from_kite_login_flow"
+}

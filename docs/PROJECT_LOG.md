@@ -841,6 +841,41 @@ Verification:
 
 1. None currently tracked; see **Known limitations** for advisory calibration and data-source notes.
 
+### 2026-10-12 — Zerodha portfolio tracker
+
+Goal:
+
+- Track personal Zerodha Kite equity and Coin mutual fund holdings with imports, returns, and
+  dashboard integration.
+
+Changes:
+
+- Added portfolio SQLite store, Zerodha CSV/XLSX parsers, AMFI/yfinance pricing, XIRR analytics,
+  read-only Kite Connect sync, CLI `portfolio` commands, dashboard **Portfolio** tab, sample
+  files, and `docs/zerodha_portfolio_windows.md`.
+- Fixed CLI `build_parser` returning the schedule subparser due to variable shadowing.
+
+Verification:
+
+- `python -m pytest tests -q`: **115 passed** (includes mocked MF peer comparison and NAV cache).
+- Streamlit health check on sample `work/portfolio.db` (`/_stcore/health` OK).
+
+### 2026-10-12 — Mutual fund peer comparison
+
+Goal:
+
+- Compare held Coin mutual funds against SEBI category peers with like-for-like plan types.
+
+Changes:
+
+- Added AMFI scheme master parsing, mfapi.in NAV client with SQLite caching, peer ranking /
+  percentile / underperformer flags, dashboard manual compare UI, and `portfolio sync-mf-master`
+  / `portfolio mf-peers` CLI commands.
+
+Verification:
+
+- `python -m pytest tests/test_mf_peer_comparison.py tests/test_mf_dashboard.py -q`: **passed**.
+
 ### 2026-09-28 — Dashboard profile activation
 
 Goal:

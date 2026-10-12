@@ -29,9 +29,19 @@ from .dashboard_data import (
     snapshot_detail,
     snapshot_summary_frame,
 )
+from .portfolio_dashboard_data import (
+    format_holdings_table,
+    format_mf_returns_table,
+    list_mf_scheme_options,
+    load_manual_mf_comparison,
+    load_mf_peer_reports,
+    load_portfolio_summary,
+    portfolio_has_data,
+)
 from .research import ResearchStore
 
 DEFAULT_DATABASE = Path("work/research.db")
+DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
 
 
 def main() -> None:
@@ -47,17 +57,28 @@ def main() -> None:
     )
 
     default_database = Path(os.environ.get("INVESTING_RESEARCH_DB", DEFAULT_DATABASE))
+    default_portfolio = Path(
+        os.environ.get("INVESTING_PORTFOLIO_DB", DEFAULT_PORTFOLIO_DATABASE)
+    )
     with st.sidebar:
-        st.header("Database")
+        st.header("Databases")
         database_path = Path(
             st.text_input("Research database", value=str(default_database))
         )
-        if not database_path.exists():
-            st.error(f"Database not found: {database_path}")
-            st.stop()
-
-        store = ResearchStore(database_path)
-        options = filter_options(store)
+        portfolio_path = Path(
+            st.text_input("Portfolio database", value=str(default_portfolio))
+        )
+        store = ResearchStore(database_path) if database_path.exists() else None
+        if store is None:
+            st.warning(
+                f"Research database not found: {database_path}. "
+                "Research tabs stay empty until you persist walk-forward results."
+            )
+        options = filter_options(store) if store is not None else {
+            "symbols": [],
+            "as_of_dates": [],
+            "research_views": [],
+        }
         st.header("Filters")
         symbol = st.selectbox(
             "Symbol",
@@ -75,44 +96,228 @@ def main() -> None:
             index=0,
         )
 
-    snapshots_tab, profile_tab, orchestration_tab = st.tabs(
-        ["Snapshots", "Profile review", "Orchestration runs"]
+    snapshots_tab, profile_tab, orchestration_tab, portfolio_tab = st.tabs(
+        ["Snapshots", "Profile review", "Orchestration runs", "Portfolio"]
     )
 
     with snapshots_tab:
-        metrics = overview_metrics(store)
-        _render_overview(metrics)
-
-        selected_symbol = None if symbol == "All" else symbol
-        selected_as_of = None if as_of == "All" else as_of
-        selected_view = None if research_view == "All" else research_view
-        summary = snapshot_summary_frame(
-            store,
-            symbol=selected_symbol,
-            as_of=selected_as_of,
-            research_view=selected_view,
-        )
-
-        st.subheader("Research snapshots")
-        if summary.empty:
-            st.info(
-                "No persisted research snapshots match the current filters. "
-                "Run `orchestrate` or `walkforward` with `--persist` first."
-            )
+        if store is None:
+            st.info("Load or create a research database to browse snapshots.")
         else:
-            st.dataframe(summary, use_container_width=True, hide_index=True)
-            detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
-            detail_as_of = selected_as_of or summary.iloc[0]["as_of"]
-            with st.expander(
-                f"Detail: {detail_symbol} as of {detail_as_of}", expanded=True
-            ):
-                _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
+            metrics = overview_metrics(store)
+            _render_overview(metrics)
+
+            selected_symbol = None if symbol == "All" else symbol
+            selected_as_of = None if as_of == "All" else as_of
+            selected_view = None if research_view == "All" else research_view
+            summary = snapshot_summary_frame(
+                store,
+                symbol=selected_symbol,
+                as_of=selected_as_of,
+                research_view=selected_view,
+            )
+
+            st.subheader("Research snapshots")
+            if summary.empty:
+                st.info(
+                    "No persisted research snapshots match the current filters. "
+                    "Run `orchestrate` or `walkforward` with `--persist` first."
+                )
+            else:
+                st.dataframe(summary, use_container_width=True, hide_index=True)
+                detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
+                detail_as_of = selected_as_of or summary.iloc[0]["as_of"]
+                with st.expander(
+                    f"Detail: {detail_symbol} as of {detail_as_of}", expanded=True
+                ):
+                    _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
 
     with profile_tab:
-        _render_profile_review(database_path, store)
+        if store is None:
+            st.info("Profile review requires a research database.")
+        else:
+            _render_profile_review(database_path, store)
 
     with orchestration_tab:
         _render_orchestration_runs(database_path)
+
+    with portfolio_tab:
+        _render_portfolio(portfolio_path, database_path)
+
+
+def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
+    st.subheader("Zerodha portfolio tracker")
+    st.caption(
+        "Imports from Zerodha Console or read-only Kite Connect sync. "
+        "Not investment advice."
+    )
+    if not portfolio_path.exists():
+        st.info(
+            f"No portfolio database at {portfolio_path}. "
+            "Run `python -m src.investing.cli portfolio load-examples` or import "
+            "Console CSV exports first."
+        )
+        return
+    if not portfolio_has_data(portfolio_path):
+        st.info(
+            "Portfolio database is empty. Import equity holdings, tradebook, and "
+            "mutual fund files from Zerodha Console."
+        )
+        return
+
+    benchmark_index = st.selectbox(
+        "Benchmark",
+        ["NIFTY 50", "NIFTY 100", "NIFTY 200"],
+        index=0,
+        key="portfolio_benchmark",
+    )
+    refresh = st.checkbox("Refresh live prices and NAVs", value=True, key="portfolio_refresh")
+    research_db = research_path if research_path.exists() else None
+    try:
+        summary, comparison = load_portfolio_summary(
+            portfolio_path,
+            research_db,
+            refresh_prices=refresh,
+            benchmark_index=benchmark_index,
+        )
+    except Exception as error:  # noqa: BLE001 - surface provider failures in UI
+        st.error(f"Could not load portfolio: {error}")
+        return
+
+    columns = st.columns(4)
+    columns[0].metric("Invested", _format_inr(summary.totals.get("invested")))
+    columns[1].metric("Current value", _format_inr(summary.totals.get("current_value")))
+    columns[2].metric("P&L", _format_inr(summary.totals.get("pnl")))
+    columns[3].metric(
+        "XIRR",
+        f"{summary.xirr * 100:.2f}%" if summary.xirr is not None else "—",
+    )
+    if summary.absolute_return_pct is not None:
+        st.caption(
+            f"Absolute return: {summary.absolute_return_pct * 100:.2f}% "
+            "(includes mutual funds when NAV data is available)."
+        )
+
+    st.markdown("**Stocks (Kite)**")
+    st.dataframe(
+        format_holdings_table(summary.equity),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.markdown("**Mutual funds (Coin)**")
+    st.dataframe(
+        format_holdings_table(summary.mutual_funds),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.markdown("**Combined allocation**")
+    st.dataframe(
+        format_holdings_table(summary.combined),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    if comparison is not None and not comparison.empty:
+        st.markdown("**Portfolio vs benchmark (indexed)**")
+        chart = comparison.set_index("date")[["portfolio_indexed", "benchmark_indexed"]]
+        st.line_chart(chart)
+    else:
+        st.info(
+            "Benchmark chart needs trade history and price data. "
+            "Import a tradebook export for equity XIRR and history."
+        )
+
+    _render_mf_peer_comparison(portfolio_path)
+
+
+def _render_mf_peer_comparison(portfolio_path: Path) -> None:
+    st.markdown("**Mutual fund peer comparison (SEBI category)**")
+    st.caption(
+        "Compares Direct vs Regular and Growth vs IDCW separately using cached NAV "
+        "history (mfapi.in + AMFI scheme master)."
+    )
+    sync_master = st.checkbox(
+        "Refresh AMFI scheme master",
+        value=False,
+        key="mf_sync_master",
+        help="Download the latest AMFI NAVAll.txt category list (one-time or weekly).",
+    )
+    try:
+        reports = load_mf_peer_reports(
+            portfolio_path,
+            sync_master=sync_master,
+        )
+    except Exception as error:  # noqa: BLE001
+        st.error(f"Could not load MF peer comparison: {error}")
+        reports = []
+
+    if not reports:
+        st.info(
+            "Import mutual fund holdings with AMFI scheme codes to see category peers. "
+            "Run `portfolio sync-mf-master` once to populate categories."
+        )
+    else:
+        for report in reports:
+            held = report.held_fund
+            title = f"{held.scheme_name} ({held.category})"
+            if held.is_underperformer:
+                st.warning(f"Underperformer vs category peers: {title}")
+            else:
+                st.markdown(f"**{title}**")
+            summary = format_mf_returns_table(
+                pd.DataFrame(
+                    [
+                        {
+                            "scheme_code": held.scheme_code,
+                            "cagr_1y": held.cagr_1y,
+                            "cagr_3y": held.cagr_3y,
+                            "cagr_5y": held.cagr_5y,
+                            "rolling_1y_median": held.rolling_1y_median,
+                            "rank_3y": held.rank_3y,
+                            "percentile_3y": held.percentile_3y,
+                            "category_avg_3y": held.category_avg_3y,
+                            "is_underperformer": held.is_underperformer,
+                        }
+                    ]
+                )
+            )
+            st.dataframe(summary, use_container_width=True, hide_index=True)
+            if not report.top_peers.empty:
+                st.markdown("Top peers (3Y CAGR)")
+                st.dataframe(
+                    format_mf_returns_table(report.top_peers),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+    st.markdown("**Manual fund comparison**")
+    options = list_mf_scheme_options(portfolio_path)
+    if options.empty:
+        st.caption("Load AMFI scheme master to pick funds for side-by-side comparison.")
+        return
+    labels = {
+        str(row["scheme_code"]): f"{row['scheme_code']} — {row['scheme_name']}"
+        for row in options.to_dict(orient="records")
+    }
+    selected = st.multiselect(
+        "Compare funds",
+        options=list(labels.keys()),
+        format_func=lambda code: labels[code],
+        key="mf_manual_compare",
+    )
+    if selected:
+        manual = load_manual_mf_comparison(portfolio_path, selected)
+        st.dataframe(
+            format_mf_returns_table(manual),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+def _format_inr(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    return f"₹{float(value):,.0f}"
 
 
 def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
