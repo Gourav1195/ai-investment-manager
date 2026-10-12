@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -94,7 +95,10 @@ def main() -> int:
             _capture_tabs(desktop, "royal-before-desktop")
 
             desktop.get_by_role("tab", name="Portfolio").click()
-            desktop.get_by_role("button", name="Load anonymized example portfolio").click()
+            desktop.get_by_role(
+                "button",
+                name="Try demo portfolio first (no files needed)",
+            ).click()
             desktop.wait_for_timeout(5000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-after-desktop-portfolio.png"), full_page=True)
 

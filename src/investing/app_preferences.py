@@ -20,6 +20,14 @@ class AppPreferences:
         data["display_name"] = name.strip()
         self._write(data)
 
+    def get_onboarding_complete(self) -> bool:
+        return bool(self._read().get("onboarding_complete"))
+
+    def set_onboarding_complete(self, value: bool) -> None:
+        data = self._read()
+        data["onboarding_complete"] = bool(value)
+        self._write(data)
+
     def _read(self) -> dict[str, object]:
         if not self.path.exists():
             return {}

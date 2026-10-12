@@ -50,7 +50,7 @@ Everything runs in the browser—no command line required.
 2. Use **Save or restore your data** in the sidebar to download `research.db` / `portfolio.db`
    backups; upload them in a later session on Streamlit Cloud.
 3. **Top mutual funds** — refresh the AMFI list once, pick a category, then **Load rankings**.
-4. **Portfolio** — **Load anonymized example portfolio** or upload Zerodha CSV/XLSX exports.
+4. **Portfolio** — follow **Step 1 of 2** (Console download guide + uploads) or **Try demo portfolio**.
 
 Charts use Plotly; mutual fund data comes from AMFI + mfapi.in with local caching in SQLite.
 

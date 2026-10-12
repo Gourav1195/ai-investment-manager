@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -74,14 +75,16 @@ def main() -> int:
             click_tab("Portfolio")
             page.wait_for_timeout(2000)
             page.screenshot(
-                path=str(ARTIFACTS / "cloud-portfolio-empty.png"),
+                path=str(ARTIFACTS / "cloud-portfolio-step1-guide.png"),
                 full_page=True,
             )
-
-            page.get_by_role("button", name="Load anonymized example portfolio").click()
-            page.wait_for_timeout(4000)
+            page.get_by_role(
+                "button",
+                name="Try demo portfolio first (no files needed)",
+            ).click()
+            page.wait_for_timeout(8000)
             page.screenshot(
-                path=str(ARTIFACTS / "cloud-portfolio-examples-loaded.png"),
+                path=str(ARTIFACTS / "cloud-portfolio-after-demo.png"),
                 full_page=True,
             )
 

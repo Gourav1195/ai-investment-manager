@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from .friendly_copy import TERM_HELP
+
 GOOGLE_FONTS = (
     "https://fonts.googleapis.com/css2?"
     "family=Cinzel:wght@500;600;700&family=Playfair+Display:wght@500;600;700&"
@@ -28,6 +30,62 @@ ROYAL_CSS = """
 
 html, body, [class*="css"] {
   font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-size: 17px;
+}
+
+[data-testid="stMetricValue"] {
+  font-size: 1.35rem !important;
+}
+
+div[data-testid="stButton"] > button {
+  min-height: 2.85rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+div[data-testid="stButton"] > button[kind="primary"] {
+  background: linear-gradient(135deg, #d4af37 0%, #b8922e 100%);
+  color: #0b1026;
+  border: 1px solid #f0d78c;
+}
+
+div[data-testid="stButton"] > button[kind="primary"]:hover {
+  border-color: #fff;
+  color: #0b1026;
+}
+
+.royal-onboarding-badge {
+  display: inline-block;
+  background: rgba(212, 175, 55, 0.15);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  color: #f0d78c;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.royal-onboarding-badge--done {
+  background: rgba(61, 214, 140, 0.12);
+  border-color: rgba(61, 214, 140, 0.45);
+  color: #9ef0c8;
+}
+
+.royal-tooltip-label {
+  cursor: help;
+  border-bottom: 1px dotted rgba(212, 175, 55, 0.6);
+}
+
+.royal-friendly-error {
+  background: rgba(255, 107, 122, 0.12);
+  border: 1px solid rgba(255, 107, 122, 0.45);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  color: #ffe8ec;
+  font-size: 1.05rem;
+  margin: 1rem 0;
 }
 
 h1, h2, h3, .royal-title {
@@ -91,15 +149,14 @@ h1, h2, h3, .royal-title {
 }
 
 .royal-metric-label {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
   color: var(--royal-muted);
   margin-bottom: 0.25rem;
 }
 
 .royal-metric-value {
-  font-size: 1.45rem;
+  font-size: 1.55rem;
   font-weight: 600;
   color: var(--royal-cream);
   line-height: 1.2;
@@ -163,8 +220,11 @@ h1, h2, h3, .royal-title {
 }
 
 @media (max-width: 768px) {
+  html, body, [class*="css"] { font-size: 16px; }
   .royal-hero { padding: 1rem; }
-  .royal-metric-value { font-size: 1.2rem; }
+  .royal-metric-value { font-size: 1.25rem; }
+  .royal-metric-grid { grid-template-columns: 1fr 1fr; }
+  [data-testid="stTabs"] button { font-size: 0.85rem; padding: 0.5rem 0.35rem; }
 }
 </style>
 """.replace("GOOGLE_FONTS_PLACEHOLDER", GOOGLE_FONTS)
@@ -222,19 +282,19 @@ def render_wealth_hero(
           <h2>Your wealth at a glance</h2>
           <div class="royal-metric-grid">
             <div class="royal-metric-card">
-              <div class="royal-metric-label">Total value</div>
+              <div class="royal-metric-label royal-tooltip-label" title="What your stocks and mutual funds are worth right now.">Total value today</div>
               <div class="royal-metric-value">{value_html}</div>
             </div>
             <div class="royal-metric-card">
-              <div class="royal-metric-label">Total profit / loss</div>
+              <div class="royal-metric-label royal-tooltip-label" title="{_esc(TERM_HELP['pnl'])}">Total profit or loss</div>
               <div class="royal-metric-value {pnl_class}">{pnl_html}</div>
             </div>
             <div class="royal-metric-card">
-              <div class="royal-metric-label">XIRR</div>
+              <div class="royal-metric-label royal-tooltip-label" title="{_esc(TERM_HELP['xirr'])}">Annual return (XIRR)</div>
               <div class="royal-metric-value">{xirr_html}</div>
             </div>
             <div class="royal-metric-card">
-              <div class="royal-metric-label">Latest day change</div>
+              <div class="royal-metric-label royal-tooltip-label" title="Change since the previous trading day we could measure.">Change since yesterday</div>
               <div class="royal-metric-value {today_class}">{today_html}</div>
               <div class="royal-metric-delta {today_class}">{_pct_label(today_change_pct)}</div>
             </div>
@@ -262,6 +322,33 @@ def render_empty_state(icon: str, title: str, message: str) -> None:
 def style_plotly_figure(fig):
     fig.update_layout(**PLOTLY_LAYOUT)
     return fig
+
+
+def render_term_glossary() -> None:
+    with st.expander("What do these words mean?", expanded=False):
+        for key, label in (
+            ("xirr", "Annual return (XIRR)"),
+            ("cagr", "Average yearly growth (CAGR)"),
+            ("nav", "Fund unit price (NAV)"),
+            ("benchmark", "Market comparison (benchmark)"),
+        ):
+            st.markdown(f"**{label}** — {TERM_HELP[key]}")
+
+
+def render_friendly_error(message: str) -> None:
+    st.markdown(
+        f'<div class="royal-friendly-error"><strong>We hit a snag</strong><br>{_esc(message)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _esc(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def _money_html(value: float | None) -> str:

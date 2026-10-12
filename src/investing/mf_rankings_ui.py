@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from .friendly_copy import TERM_HELP
 from .royal_theme import render_empty_state, style_plotly_figure
 
 from .mf_nav_client import MfNavClient
@@ -67,11 +68,16 @@ def render_top_mutual_funds_tab(portfolio_path: Path) -> None:
         option = st.selectbox("Option", ["Growth", "IDCW"], index=0, key="mf_rank_option")
     with col4:
         rank_by = st.selectbox(
-            "Rank by",
+            "Sort funds by",
             ["cagr_3y", "cagr_5y", "cagr_1y"],
-            format_func=lambda x: {"cagr_1y": "1-year return", "cagr_3y": "3-year return", "cagr_5y": "5-year return"}[x],
+            format_func=lambda x: {
+                "cagr_1y": "1-year average growth",
+                "cagr_3y": "3-year average growth",
+                "cagr_5y": "5-year average growth",
+            }[x],
             index=0,
             key="mf_rank_metric",
+            help=TERM_HELP["cagr"],
         )
     top_n = st.slider("Show top N funds", min_value=5, max_value=25, value=10, key="mf_rank_topn")
 

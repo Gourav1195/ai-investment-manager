@@ -46,7 +46,16 @@ from .portfolio_cloud_ui import render_portfolio_import_panel
 from .portfolio_mf_charts import render_mutual_fund_charts
 from .repo_bootstrap import default_work_dir
 from .research import ResearchStore
-from .royal_theme import apply_royal_theme, render_empty_state, render_welcome_header, render_wealth_hero
+from .friendly_copy import TERM_HELP, friendly_runtime_error
+from .onboarding_ui import maybe_auto_load_demo_for_qa, render_first_run_wizard
+from .royal_theme import (
+    apply_royal_theme,
+    render_empty_state,
+    render_friendly_error,
+    render_term_glossary,
+    render_welcome_header,
+    render_wealth_hero,
+)
 from .ui_research import render_database_backup_panel, render_run_research_controls
 from .wealth_insights import load_wealth_snapshot, plain_english_insights
 
@@ -62,7 +71,13 @@ def main() -> None:
     )
     apply_royal_theme()
     require_app_password()
+    try:
+        _run_dashboard()
+    except Exception as error:  # noqa: BLE001 — show friendly message, not traceback
+        render_friendly_error(friendly_runtime_error(error))
 
+
+def _run_dashboard() -> None:
     work_dir = default_work_dir()
     default_database = Path(
         os.environ.get("INVESTING_RESEARCH_DB", work_dir / "research.db")
@@ -108,6 +123,7 @@ def main() -> None:
     database_path = Path(database_path)
     portfolio_path = Path(portfolio_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
+    maybe_auto_load_demo_for_qa(portfolio_path, prefs)
 
     store = ResearchStore(database_path) if database_path.exists() else None
     options = filter_options(store) if store is not None else {
@@ -121,12 +137,21 @@ def main() -> None:
         '<p class="royal-disclaimer">For your information only — not investment advice.</p>',
         unsafe_allow_html=True,
     )
+    render_term_glossary()
 
-    wealth, _summary, peer_reports = load_wealth_snapshot(
-        portfolio_path,
-        database_path,
-        refresh_prices=False,
-    )
+    try:
+        wealth, _summary, peer_reports = load_wealth_snapshot(
+            portfolio_path,
+            database_path,
+            refresh_prices=False,
+        )
+    except Exception as error:  # noqa: BLE001
+        render_friendly_error(friendly_runtime_error(error))
+        from .wealth_insights import WealthSnapshot
+
+        wealth = WealthSnapshot(None, None, None, None, None, False)
+        peer_reports = []
+
     render_wealth_hero(
         total_value=wealth.total_value,
         total_pnl=wealth.total_pnl,
@@ -141,7 +166,7 @@ def main() -> None:
     )
 
     with portfolio_tab:
-        _render_portfolio(portfolio_path, database_path)
+        _render_portfolio(portfolio_path, database_path, prefs)
 
     with my_mf_tab:
         _render_my_mutual_funds(portfolio_path)
@@ -222,25 +247,36 @@ def main() -> None:
             _render_orchestration_runs(database_path)
 
 
-def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
+def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPreferences) -> None:
     st.markdown('<h3 class="royal-section-title">Your Zerodha portfolio</h3>', unsafe_allow_html=True)
-    st.caption("Import Console exports or load the anonymised demo — everything stays in your session.")
-    render_portfolio_import_panel(portfolio_path)
     if not portfolio_path.exists() or not portfolio_has_data(portfolio_path):
-        render_empty_state(
-            "💼",
-            "Connect your portfolio",
-            "Load the demo or upload equity, tradebook, and mutual fund files from Zerodha Console.",
+        render_first_run_wizard(
+            portfolio_path,
+            prefs,
+            import_panel_renderer=render_portfolio_import_panel,
         )
         return
 
+    from .onboarding_ui import _render_step_two_banner
+
+    _render_step_two_banner()
+
+    with st.expander("Add or replace files from Zerodha Console", expanded=False):
+        render_portfolio_import_panel(portfolio_path)
+
     benchmark_index = st.selectbox(
-        "Benchmark",
+        "Compare my stocks to",
         ["NIFTY 50", "NIFTY 100", "NIFTY 200"],
         index=0,
         key="portfolio_benchmark",
+        help=TERM_HELP["benchmark"],
     )
-    refresh = st.checkbox("Refresh live prices and NAVs", value=True, key="portfolio_refresh")
+    refresh = st.checkbox(
+        "Update live prices and fund values",
+        value=True,
+        key="portfolio_refresh",
+        help="Turn off if the page feels slow; we will use the last saved prices.",
+    )
     research_db = research_path if research_path.exists() else None
     try:
         summary, comparison = load_portfolio_summary(
@@ -249,17 +285,30 @@ def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
             refresh_prices=refresh,
             benchmark_index=benchmark_index,
         )
-    except Exception as error:  # noqa: BLE001 - surface provider failures in UI
-        st.error(f"Could not load portfolio: {error}")
+    except Exception as error:  # noqa: BLE001
+        render_friendly_error(friendly_runtime_error(error))
         return
 
     columns = st.columns(4)
-    columns[0].metric("Invested", _format_inr(summary.totals.get("invested")))
-    columns[1].metric("Current value", _format_inr(summary.totals.get("current_value")))
-    columns[2].metric("P&L", _format_inr(summary.totals.get("pnl")))
+    columns[0].metric(
+        "Money you put in",
+        _format_inr(summary.totals.get("invested")),
+        help="Total amount invested in stocks and mutual funds.",
+    )
+    columns[1].metric(
+        "Worth today",
+        _format_inr(summary.totals.get("current_value")),
+        help="Current market value of your holdings.",
+    )
+    columns[2].metric(
+        "Profit or loss",
+        _format_inr(summary.totals.get("pnl")),
+        help=TERM_HELP["pnl"],
+    )
     columns[3].metric(
-        "XIRR",
-        f"{summary.xirr * 100:.2f}%" if summary.xirr is not None else "—",
+        "Annual return (XIRR)",
+        _format_xirr(summary.xirr),
+        help=TERM_HELP["xirr"],
     )
     if summary.absolute_return_pct is not None:
         st.caption(
@@ -410,6 +459,18 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> list:
             hide_index=True,
         )
     return reports
+
+
+def _format_xirr(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if number != number:  # NaN
+        return "—"
+    return f"{number * 100:.2f}%"
 
 
 def _format_inr(value: object) -> str:
