@@ -219,12 +219,26 @@ h1, h2, h3, .royal-title {
   margin-bottom: 0.75rem;
 }
 
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  gap: 0.15rem;
+  padding-bottom: 0.25rem;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   html, body, [class*="css"] { font-size: 16px; }
   .royal-hero { padding: 1rem; }
   .royal-metric-value { font-size: 1.25rem; }
   .royal-metric-grid { grid-template-columns: 1fr 1fr; }
-  [data-testid="stTabs"] button { font-size: 0.85rem; padding: 0.5rem 0.35rem; }
+  [data-testid="stTabs"] button { font-size: 0.8rem; padding: 0.45rem 0.3rem; }
 }
 </style>
 """.replace("GOOGLE_FONTS_PLACEHOLDER", GOOGLE_FONTS)

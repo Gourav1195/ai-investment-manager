@@ -78,7 +78,7 @@ def main() -> int:
             browser = pw.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 390, "height": 844})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
+            page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
             page.get_by_role("tab", name="Portfolio").click()
             page.wait_for_selector("text=Step 1 of 2", timeout=120_000)
             page.screenshot(path=str(ARTIFACTS / "first-time-step1-mobile.png"), full_page=True)
@@ -94,7 +94,7 @@ def main() -> int:
 
             _seed_demo_portfolio(work_dir)
             page.reload(wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
+            page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
             expect(page.locator('[data-testid="stException"]')).to_have_count(0)
             page.get_by_role("tab", name="Portfolio").click()
             page.wait_for_selector("text=Money you put in", timeout=120_000)
@@ -107,7 +107,7 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
+            desktop.wait_for_selector("text=Wealth at a glance", timeout=120_000)
             desktop.screenshot(path=str(ARTIFACTS / "first-time-desktop-home.png"), full_page=True)
             expect(desktop.locator('[data-testid="stException"]')).to_have_count(0)
 

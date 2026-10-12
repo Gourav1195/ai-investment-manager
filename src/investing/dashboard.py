@@ -63,6 +63,16 @@ from .about_ui import render_about_button
 DEFAULT_DATABASE = Path("work/research.db")
 DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
 
+TOP_LEVEL_TABS = (
+    "Wealth at a glance",
+    "Portfolio",
+    "My Mutual Funds",
+    "Top Mutual Funds",
+    "Snapshots",
+    "Profile review",
+    "Orchestration runs",
+)
+
 
 def main() -> None:
     st.set_page_config(
@@ -104,10 +114,9 @@ def _run_dashboard() -> None:
         with st.expander("Quick guide", expanded=False):
             st.markdown(
                 """
-**Portfolio** — Import Zerodha files or load the demo.  
-**My Mutual Funds** — See how your funds compare to peers.  
-**Top Mutual Funds** — Explore category leaders.  
-**Stock Research** — Optional long-term stock scoring.
+Use the **tabs along the top** — each feature is one click away.  
+**Snapshots / Profile / Orchestration** — pro stock research tools.  
+**Advanced** below — run research, backups, database paths.
                 """
             )
         with st.expander("Advanced", expanded=False):
@@ -158,18 +167,32 @@ def _run_dashboard() -> None:
         wealth = WealthSnapshot(None, None, None, None, None, False)
         peer_reports = []
 
-    render_wealth_hero(
-        total_value=wealth.total_value,
-        total_pnl=wealth.total_pnl,
-        xirr=wealth.xirr,
-        today_change=wealth.today_change,
-        today_change_pct=wealth.today_change_pct,
-        insights=plain_english_insights(peer_reports),
-    )
+    insights = plain_english_insights(peer_reports)
 
-    portfolio_tab, my_mf_tab, top_mf_tab, research_tab = st.tabs(
-        ["Portfolio", "My Mutual Funds", "Top Mutual Funds", "Stock Research"],
-    )
+    (
+        wealth_tab,
+        portfolio_tab,
+        my_mf_tab,
+        top_mf_tab,
+        snapshots_tab,
+        profile_tab,
+        orchestration_tab,
+    ) = st.tabs(list(TOP_LEVEL_TABS))
+
+    with wealth_tab:
+        st.markdown(
+            '<h3 class="royal-section-title">Wealth at a glance</h3>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Your totals and plain-English highlights — open other tabs for detail.")
+        render_wealth_hero(
+            total_value=wealth.total_value,
+            total_pnl=wealth.total_pnl,
+            xirr=wealth.xirr,
+            today_change=wealth.today_change,
+            today_change_pct=wealth.today_change_pct,
+            insights=insights,
+        )
 
     with portfolio_tab:
         _render_portfolio(portfolio_path, database_path, prefs)
@@ -180,77 +203,86 @@ def _run_dashboard() -> None:
     with top_mf_tab:
         render_top_mutual_funds_tab(portfolio_path)
 
-    with research_tab:
-        snap_tab, profile_tab, orch_tab = st.tabs(
-            ["Snapshots", "Profile review", "Orchestration runs"],
+    with snapshots_tab:
+        _render_snapshots_tab(database_path, store, options)
+
+    with profile_tab:
+        if store is None:
+            render_empty_state(
+                "⚙️",
+                "Profile review needs research data",
+                "Open the Snapshots tab and run research, or use Run research in Advanced.",
+            )
+        else:
+            _render_profile_review(database_path, store)
+
+    with orchestration_tab:
+        _render_orchestration_runs(database_path)
+
+
+def _render_snapshots_tab(
+    database_path: Path,
+    store: ResearchStore | None,
+    options: dict[str, list],
+) -> None:
+    st.markdown('<h3 class="royal-section-title">Research snapshots</h3>', unsafe_allow_html=True)
+    st.caption("Long-term stock scores from the walk-forward research pipeline.")
+
+    symbol = st.selectbox(
+        "Symbol filter",
+        ["All"] + options["symbols"],
+        index=0,
+        key="research_symbol_filter",
+    )
+    as_of = st.selectbox(
+        "As-of date filter",
+        ["All"] + options["as_of_dates"],
+        index=0,
+        key="research_asof_filter",
+    )
+    research_view = st.selectbox(
+        "Research view filter",
+        ["All"] + options["research_views"],
+        index=0,
+        key="research_view_filter",
+    )
+
+    if store is None:
+        render_empty_state(
+            "📈",
+            "No research saved yet",
+            "Run research from the Advanced section in the sidebar, then return here.",
         )
-        with snap_tab:
-            symbol = st.selectbox(
-                "Symbol filter",
-                ["All"] + options["symbols"],
-                index=0,
-                key="research_symbol_filter",
-            )
-            as_of = st.selectbox(
-                "As-of date filter",
-                ["All"] + options["as_of_dates"],
-                index=0,
-                key="research_asof_filter",
-            )
-            research_view = st.selectbox(
-                "Research view filter",
-                ["All"] + options["research_views"],
-                index=0,
-                key="research_view_filter",
-            )
-            if store is None:
-                render_empty_state(
-                    "📈",
-                    "Stock research is empty",
-                    "Run a quick research pass to see scores and explanations for Indian stocks.",
-                )
-                if render_run_research_controls(database_path, key_prefix="snapshots"):
-                    st.rerun()
-            else:
-                metrics = overview_metrics(store)
-                _render_overview(metrics)
-                selected_symbol = None if symbol == "All" else symbol
-                selected_as_of = None if as_of == "All" else as_of
-                selected_view = None if research_view == "All" else research_view
-                summary = snapshot_summary_frame(
-                    store,
-                    symbol=selected_symbol,
-                    as_of=selected_as_of,
-                    research_view=selected_view,
-                )
-                st.markdown('<h3 class="royal-section-title">Research snapshots</h3>', unsafe_allow_html=True)
-                if summary.empty:
-                    render_empty_state(
-                        "🔍",
-                        "No snapshots yet",
-                        "Adjust filters or run research to populate this view.",
-                    )
-                    if render_run_research_controls(database_path, key_prefix="snapshots_empty"):
-                        st.rerun()
-                else:
-                    st.dataframe(summary, use_container_width=True, hide_index=True)
-                    detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
-                    detail_as_of = selected_as_of or summary.iloc[0]["as_of"]
-                    with st.expander(
-                        f"Detail: {detail_symbol} as of {detail_as_of}", expanded=True
-                    ):
-                        _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
-        with profile_tab:
-            if store is None:
-                render_empty_state(
-                    "⚙️",
-                    "Profile review needs research data",
-                    "Run stock research first, then return here to review scoring rules.",
-                )
-            else:
-                _render_profile_review(database_path, store)
-        with orch_tab:
-            _render_orchestration_runs(database_path)
+        if render_run_research_controls(database_path, key_prefix="snapshots"):
+            st.rerun()
+        return
+
+    metrics = overview_metrics(store)
+    _render_overview(metrics)
+    selected_symbol = None if symbol == "All" else symbol
+    selected_as_of = None if as_of == "All" else as_of
+    selected_view = None if research_view == "All" else research_view
+    summary = snapshot_summary_frame(
+        store,
+        symbol=selected_symbol,
+        as_of=selected_as_of,
+        research_view=selected_view,
+    )
+    if summary.empty:
+        render_empty_state(
+            "🔍",
+            "No snapshots match your filters",
+            "Adjust filters above or run research again from Advanced.",
+        )
+        if render_run_research_controls(database_path, key_prefix="snapshots_empty"):
+            st.rerun()
+        return
+
+    st.dataframe(summary, use_container_width=True, hide_index=True)
+    detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
+    detail_as_of = selected_as_of or summary.iloc[0]["as_of"]
+    with st.expander(f"Detail: {detail_symbol} as of {detail_as_of}", expanded=True):
+        _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
 
 
 def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPreferences) -> None:
@@ -725,7 +757,7 @@ def _render_orchestration_runs(database_path: Path) -> None:
         render_empty_state(
             "🗂️",
             "No research runs logged yet",
-            "Open Stock Research → Snapshots and tap Run research.",
+            "Open the Snapshots tab or use Run research in Advanced.",
         )
         return
     st.dataframe(runs, use_container_width=True, hide_index=True)
