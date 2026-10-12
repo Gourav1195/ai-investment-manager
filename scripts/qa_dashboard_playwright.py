@@ -64,7 +64,7 @@ def _start_streamlit(work: Path) -> subprocess.Popen[bytes]:
             "-m",
             "streamlit",
             "run",
-            str(ROOT / "src/investing/dashboard_streamlit.py"),
+            str(ROOT / "streamlit_app.py"),
             "--server.headless",
             "true",
             "--server.port",

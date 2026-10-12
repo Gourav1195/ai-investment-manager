@@ -9,8 +9,9 @@
 > [`docs/india_long_term_mvp.md`](docs/india_long_term_mvp.md) for commands and data contracts.
 > A **Zerodha portfolio tracker** (Kite equities + Coin mutual funds) is documented in
 > [`docs/zerodha_portfolio_windows.md`](docs/zerodha_portfolio_windows.md).
-> For a minimal India research + portfolio install use `pip install -r requirements-core.txt`
-> (optional trading stack: `requirements-trading.txt`).
+> For a minimal India research + portfolio install use `pip install -r requirements.txt`
+> (same as `requirements-core.txt`). Optional trading stack: `requirements-trading.txt`.
+> **Streamlit Cloud:** main file `streamlit_app.py` — see [`docs/streamlit_cloud.md`](docs/streamlit_cloud.md).
 > Project decisions, completed work, verification, and next milestones are maintained in
 > [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
 

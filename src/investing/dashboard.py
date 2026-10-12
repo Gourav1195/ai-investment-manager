@@ -38,6 +38,9 @@ from .portfolio_dashboard_data import (
     load_portfolio_summary,
     portfolio_has_data,
 )
+from .cloud_auth import require_app_password
+from .portfolio_cloud_ui import render_portfolio_import_panel
+from .repo_bootstrap import default_work_dir
 from .research import ResearchStore
 
 DEFAULT_DATABASE = Path("work/research.db")
@@ -50,15 +53,19 @@ def main() -> None:
         page_icon="📊",
         layout="wide",
     )
+    require_app_password()
     st.title("India Long-Term Research Dashboard")
     st.caption(
         "Research classifications for further investigation. Not investment advice. "
         "Scores and rankings are deterministic and auditable."
     )
 
-    default_database = Path(os.environ.get("INVESTING_RESEARCH_DB", DEFAULT_DATABASE))
+    work_dir = default_work_dir()
+    default_database = Path(
+        os.environ.get("INVESTING_RESEARCH_DB", work_dir / "research.db")
+    )
     default_portfolio = Path(
-        os.environ.get("INVESTING_PORTFOLIO_DB", DEFAULT_PORTFOLIO_DATABASE)
+        os.environ.get("INVESTING_PORTFOLIO_DB", work_dir / "portfolio.db")
     )
     with st.sidebar:
         st.header("Databases")
@@ -151,17 +158,12 @@ def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
         "Imports from Zerodha Console or read-only Kite Connect sync. "
         "Not investment advice."
     )
-    if not portfolio_path.exists():
+    render_portfolio_import_panel(portfolio_path)
+    if not portfolio_path.exists() or not portfolio_has_data(portfolio_path):
         st.info(
-            f"No portfolio database at {portfolio_path}. "
-            "Run `python -m src.investing.cli portfolio load-examples` or import "
-            "Console CSV exports first."
-        )
-        return
-    if not portfolio_has_data(portfolio_path):
-        st.info(
-            "Portfolio database is empty. Import equity holdings, tradebook, and "
-            "mutual fund files from Zerodha Console."
+            "No portfolio data yet. Use **Load anonymized example portfolio** above "
+            "or upload Zerodha Console CSV/XLSX exports. Data stays in this session "
+            "on Streamlit Cloud."
         )
         return
 
