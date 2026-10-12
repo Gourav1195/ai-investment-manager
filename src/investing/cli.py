@@ -62,6 +62,17 @@ from .research import (
 )
 from .scoring import LongTermScorer
 from .xbrl import NseXbrlClient
+from .portfolio_analytics import build_portfolio_summary, refresh_market_data
+from .portfolio_service import (
+    import_equity_holdings_file,
+    import_mf_holdings_file,
+    import_tradebook_file,
+    load_example_portfolio,
+    sync_kite_holdings,
+)
+from .portfolio_store import PortfolioStore
+from .mf_nav_client import MfNavClient
+from .mf_peer_comparison import compare_portfolio_mutual_funds, peer_reports_to_frame
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -295,7 +306,92 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch the Streamlit research dashboard for persisted snapshots",
     )
     dashboard.add_argument("--database", type=Path, default=Path("work/research.db"))
+    dashboard.add_argument(
+        "--portfolio-database",
+        type=Path,
+        default=Path("work/portfolio.db"),
+        help="SQLite database for Zerodha portfolio imports",
+    )
     dashboard.add_argument("--port", type=int, default=8501)
+
+    portfolio = subcommands.add_parser(
+        "portfolio",
+        help="Import and inspect a Zerodha Kite/Coin portfolio (read-only)",
+    )
+    portfolio_sub = portfolio.add_subparsers(dest="portfolio_command", required=True)
+
+    portfolio_import = portfolio_sub.add_parser(
+        "import", help="Import Zerodha Console CSV/XLSX exports"
+    )
+    portfolio_import.add_argument("--database", type=Path, default=Path("work/portfolio.db"))
+    portfolio_import.add_argument(
+        "--kind",
+        required=True,
+        choices=["equity-holdings", "tradebook", "mf-holdings"],
+    )
+    portfolio_import.add_argument("input", type=Path)
+    portfolio_import.add_argument(
+        "--replace-trades",
+        action="store_true",
+        help="Replace existing tradebook rows when importing a tradebook",
+    )
+
+    portfolio_sync = portfolio_sub.add_parser(
+        "sync-kite",
+        help="Sync equity and MF holdings from read-only Kite Connect API",
+    )
+    portfolio_sync.add_argument("--database", type=Path, default=Path("work/portfolio.db"))
+    portfolio_sync.add_argument(
+        "--kite-config",
+        type=Path,
+        help="Optional JSON file with api_key and access_token (default work/kite.local.json)",
+    )
+
+    portfolio_examples = portfolio_sub.add_parser(
+        "load-examples",
+        help="Load anonymized sample holdings into the portfolio database",
+    )
+    portfolio_examples.add_argument("--database", type=Path, default=Path("work/portfolio.db"))
+
+    portfolio_show = portfolio_sub.add_parser(
+        "show", help="Print current portfolio valuation summary"
+    )
+    portfolio_show.add_argument("--database", type=Path, default=Path("work/portfolio.db"))
+    portfolio_show.add_argument(
+        "--research-database",
+        type=Path,
+        default=Path("work/research.db"),
+        help="Optional research DB for score linkage",
+    )
+    portfolio_show.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help="Skip live price/NAV fetch and use cached values only",
+    )
+    portfolio_show.add_argument("--output", type=Path)
+
+    portfolio_sync_master = portfolio_sub.add_parser(
+        "sync-mf-master",
+        help="Download AMFI scheme categories into the portfolio database",
+    )
+    portfolio_sync_master.add_argument("--database", type=Path, default=Path("work/portfolio.db"))
+    portfolio_sync_master.add_argument(
+        "--input",
+        type=Path,
+        help="Optional local AMFI NAVAll.txt file instead of downloading",
+    )
+
+    portfolio_mf_peers = portfolio_sub.add_parser(
+        "mf-peers",
+        help="Compare held mutual funds against SEBI category peers",
+    )
+    portfolio_mf_peers.add_argument("--database", type=Path, default=Path("work/portfolio.db"))
+    portfolio_mf_peers.add_argument(
+        "--sync-master",
+        action="store_true",
+        help="Refresh AMFI scheme master before comparing",
+    )
+    portfolio_mf_peers.add_argument("--output", type=Path)
 
     constituents = subcommands.add_parser(
         "constituents",
@@ -605,47 +701,47 @@ def build_parser() -> argparse.ArgumentParser:
         "run-quarterly",
         help="Archive constituents and run rolling quarterly orchestration",
     )
-    for parser in (schedule_show, schedule_run):
-        parser.add_argument("--database", type=Path, default=Path("work/research.db"))
-        parser.add_argument(
+    for schedule_parser in (schedule_show, schedule_run):
+        schedule_parser.add_argument("--database", type=Path, default=Path("work/research.db"))
+        schedule_parser.add_argument(
             "--index",
             default="NIFTY 50",
             choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"],
         )
-        parser.add_argument(
+        schedule_parser.add_argument(
             "--benchmark-index",
             default="NIFTY 50",
             choices=["NIFTY 50", "NIFTY 100", "NIFTY 200"],
         )
-        parser.add_argument("--quarters", type=int, default=4)
-        parser.add_argument("--price-lookback-years", type=int, default=3)
-        parser.add_argument("--forward-days", type=int, default=365)
-        parser.add_argument(
+        schedule_parser.add_argument("--quarters", type=int, default=4)
+        schedule_parser.add_argument("--price-lookback-years", type=int, default=3)
+        schedule_parser.add_argument("--forward-days", type=int, default=365)
+        schedule_parser.add_argument(
             "--archive-all-indices",
             action=argparse.BooleanOptionalAction,
             default=True,
         )
-        parser.add_argument(
+        schedule_parser.add_argument(
             "--archive-constituents",
             action=argparse.BooleanOptionalAction,
             default=True,
         )
-        parser.add_argument(
+        schedule_parser.add_argument(
             "--historical-constituents",
             action=argparse.BooleanOptionalAction,
             default=True,
         )
-        parser.add_argument(
+        schedule_parser.add_argument(
             "--use-active-profile",
             action=argparse.BooleanOptionalAction,
             default=True,
         )
-        parser.add_argument(
+        schedule_parser.add_argument(
             "--explain",
             action=argparse.BooleanOptionalAction,
             default=True,
         )
-        parser.add_argument(
+        schedule_parser.add_argument(
             "--persist",
             action=argparse.BooleanOptionalAction,
             default=True,
@@ -663,7 +759,102 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "dashboard":
-            return launch_dashboard(args.database, args.port)
+            return launch_dashboard(
+                args.database,
+                args.port,
+                portfolio_database=args.portfolio_database,
+            )
+        if args.command == "portfolio":
+            store = PortfolioStore(args.database)
+            if args.portfolio_command == "import":
+                if args.kind == "equity-holdings":
+                    count = import_equity_holdings_file(store, args.input)
+                    print(f"Imported {count} equity holdings from {args.input}")
+                elif args.kind == "tradebook":
+                    count = import_tradebook_file(
+                        store,
+                        args.input,
+                        replace_existing=args.replace_trades,
+                    )
+                    print(f"Imported {count} tradebook rows from {args.input}")
+                else:
+                    count = import_mf_holdings_file(store, args.input)
+                    print(f"Imported {count} mutual fund holdings from {args.input}")
+                return 0
+            if args.portfolio_command == "sync-kite":
+                equity_rows, mf_rows = sync_kite_holdings(
+                    store, kite_config=args.kite_config
+                )
+                print(
+                    f"Synced {equity_rows} equity holdings and {mf_rows} mutual fund "
+                    "holdings from Kite Connect (read-only)."
+                )
+                return 0
+            if args.portfolio_command == "load-examples":
+                counts = load_example_portfolio(store)
+                print(
+                    "Loaded example portfolio: "
+                    f"{counts['equity_holdings']} equity holdings, "
+                    f"{counts['mf_holdings']} MF holdings, "
+                    f"{counts['tradebook']} tradebook rows."
+                )
+                return 0
+            if args.portfolio_command == "show":
+                research_store = (
+                    ResearchStore(args.research_database)
+                    if args.research_database.exists()
+                    else None
+                )
+                if args.no_fetch:
+                    summary = build_portfolio_summary(store, research_store=research_store)
+                else:
+                    stock_prices, navs = refresh_market_data(store)
+                    summary = build_portfolio_summary(
+                        store,
+                        stock_prices=stock_prices,
+                        navs=navs,
+                        research_store=research_store,
+                    )
+                rows = summary.combined
+                if args.output:
+                    args.output.parent.mkdir(parents=True, exist_ok=True)
+                    rows.to_csv(args.output, index=False)
+                    print(f"Wrote portfolio summary to {args.output}")
+                else:
+                    print("Portfolio summary")
+                    print(rows.to_string(index=False))
+                    print()
+                    print(f"Invested: {summary.totals.get('invested')}")
+                    print(f"Current value: {summary.totals.get('current_value')}")
+                    print(f"P&L %: {summary.absolute_return_pct}")
+                    print(f"XIRR: {summary.xirr}")
+                return 0
+            if args.portfolio_command == "sync-mf-master":
+                client = MfNavClient(store)
+                if args.input:
+                    text = args.input.read_text(encoding="utf-8")
+                    count = client.sync_scheme_master_from_amfi(text=text)
+                else:
+                    count = client.sync_scheme_master_from_amfi()
+                print(f"Synced {count} AMFI scheme master rows.")
+                return 0
+            if args.portfolio_command == "mf-peers":
+                client = MfNavClient(store)
+                if args.sync_master:
+                    client.sync_scheme_master_from_amfi()
+                reports = compare_portfolio_mutual_funds(
+                    store,
+                    client=client,
+                    sync_master=False,
+                )
+                data = peer_reports_to_frame(reports)
+                if args.output:
+                    args.output.parent.mkdir(parents=True, exist_ok=True)
+                    data.to_csv(args.output, index=False)
+                    print(f"Wrote MF peer summary to {args.output}")
+                else:
+                    print(data.to_string(index=False) if not data.empty else "No MF holdings.")
+                return 0
         if args.command == "constituents":
             store = ConstituentHistoryStore(args.database)
             if args.constituents_command == "list":
@@ -1222,13 +1413,20 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def launch_dashboard(database: Path, port: int) -> int:
+def launch_dashboard(
+    database: Path,
+    port: int,
+    *,
+    portfolio_database: Path | None = None,
+) -> int:
     import os
     import subprocess
 
     script = Path(__file__).resolve().parent / "dashboard.py"
     env = os.environ.copy()
     env["INVESTING_RESEARCH_DB"] = str(database.resolve())
+    if portfolio_database is not None:
+        env["INVESTING_PORTFOLIO_DB"] = str(portfolio_database.resolve())
     completed = subprocess.run(
         [
             sys.executable,

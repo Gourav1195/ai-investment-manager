@@ -1,0 +1,5 @@
+Open Ended Schemes ( Equity Scheme - Flexi Cap Fund )
+119063;HDFC Flexi Cap Fund - Direct Plan - Growth;INF179K01XXX;;900.00;08-10-2026
+119064;Sample Flexi Cap Peer A - Direct Plan - Growth;INF000000001;;880.00;08-10-2026
+119065;Sample Flexi Cap Peer B - Direct Plan - Growth;INF000000002;;920.00;08-10-2026
+122639;Parag Parikh Flexi Cap Fund - Direct Plan - Growth;INF879O01027;;80.00;08-10-2026

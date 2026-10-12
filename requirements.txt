@@ -39,6 +39,7 @@ sqlalchemy>=2.0.0
 
 # Utilities
 pathlib>=1.0.1
+openpyxl>=3.1.0
 typing-extensions>=4.8.0
 lxml>=4.9.0  # For pandas.read_html
 finnhub>=2.4.19
