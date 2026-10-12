@@ -58,6 +58,7 @@ from .royal_theme import (
 )
 from .ui_research import render_database_backup_panel, render_run_research_controls
 from .wealth_insights import load_wealth_snapshot, plain_english_insights
+from .about_ui import render_about_button
 
 DEFAULT_DATABASE = Path("work/research.db")
 DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
@@ -99,6 +100,7 @@ def _run_dashboard() -> None:
         )
         if name != stored_name:
             prefs.set_display_name(name)
+        render_about_button(key="sidebar_about_app")
         with st.expander("Quick guide", expanded=False):
             st.markdown(
                 """
@@ -132,7 +134,11 @@ def _run_dashboard() -> None:
         "research_views": [],
     }
 
-    render_welcome_header(name.strip())
+    welcome_col, about_col = st.columns([6, 1])
+    with welcome_col:
+        render_welcome_header(name.strip())
+    with about_col:
+        render_about_button(key="header_about_app")
     st.markdown(
         '<p class="royal-disclaimer">For your information only — not investment advice.</p>',
         unsafe_allow_html=True,

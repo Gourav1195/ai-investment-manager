@@ -92,6 +92,10 @@ def main() -> int:
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
             desktop.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-before-desktop-home.png"), full_page=True)
+            desktop.get_by_role("button", name="About this app").first.click()
+            desktop.wait_for_timeout(1500)
+            desktop.wait_for_selector("text=Privacy & safety", timeout=30_000)
+            desktop.screenshot(path=str(ARTIFACTS / "royal-about-dialog-desktop.png"), full_page=True)
             _capture_tabs(desktop, "royal-before-desktop")
 
             desktop.get_by_role("tab", name="Portfolio").click()

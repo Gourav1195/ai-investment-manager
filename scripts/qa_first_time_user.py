@@ -111,6 +111,12 @@ def main() -> int:
             desktop.screenshot(path=str(ARTIFACTS / "first-time-desktop-home.png"), full_page=True)
             expect(desktop.locator('[data-testid="stException"]')).to_have_count(0)
 
+            desktop.get_by_role("button", name="About this app").first.click()
+            desktop.wait_for_timeout(1500)
+            desktop.wait_for_selector("text=How it works", timeout=30_000)
+            desktop.screenshot(path=str(ARTIFACTS / "first-time-about-dialog.png"), full_page=True)
+            expect(desktop.locator('[data-testid="stException"]')).to_have_count(0)
+
             browser.close()
     finally:
         process.terminate()
