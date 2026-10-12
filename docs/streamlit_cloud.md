@@ -43,13 +43,16 @@ INVESTING_WORK_DIR = "/mount/path"  # defaults to repo/work/
 
 ## First visit (no databases)
 
-The **Portfolio** tab shows:
+Everything runs in the browser—no command line required.
 
-- **Load anonymized example portfolio** (bundled demo CSVs; no personal data)
-- Upload widgets for equity holdings, tradebook, and MF holdings (CSV/XLSX)
+1. Open the **Snapshots** tab (or the sidebar) and click **Run research** to build research
+   snapshots on a small stock list (demo-friendly on the free tier).
+2. Use **Save or restore your data** in the sidebar to download `research.db` / `portfolio.db`
+   backups; upload them in a later session on Streamlit Cloud.
+3. **Top mutual funds** — refresh the AMFI list once, pick a category, then **Load rankings**.
+4. **Portfolio** — **Load anonymized example portfolio** or upload Zerodha CSV/XLSX exports.
 
-Research tabs stay empty until you run CLI research locally and upload a `research.db`
-(or use the demo after loading examples).
+Charts use Plotly; mutual fund data comes from AMFI + mfapi.in with local caching in SQLite.
 
 ## Local check (simulates Cloud cwd)
 

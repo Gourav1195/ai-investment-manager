@@ -39,9 +39,12 @@ from .portfolio_dashboard_data import (
     portfolio_has_data,
 )
 from .cloud_auth import require_app_password
+from .mf_rankings_ui import render_top_mutual_funds_tab
 from .portfolio_cloud_ui import render_portfolio_import_panel
+from .portfolio_mf_charts import render_mutual_fund_charts
 from .repo_bootstrap import default_work_dir
 from .research import ResearchStore
+from .ui_research import render_database_backup_panel, render_run_research_controls
 
 DEFAULT_DATABASE = Path("work/research.db")
 DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
@@ -59,6 +62,18 @@ def main() -> None:
         "Research classifications for further investigation. Not investment advice. "
         "Scores and rankings are deterministic and auditable."
     )
+    with st.expander("How to use this dashboard", expanded=False):
+        st.markdown(
+            """
+1. **Snapshots** — Click **Run research** to score a small list of Indian stocks and save results here.
+2. **Profile review** — See how strict the scoring rules are after a research run.
+3. **Orchestration runs** — A log of each research run you started from the website.
+4. **Top mutual funds** — Compare funds in a SEBI category by 1Y / 3Y / 5Y returns.
+5. **Portfolio** — Upload Zerodha exports or load the demo, then view allocation and fund charts.
+
+Use **Save or restore your data** in the sidebar to download SQLite backups (recommended on Streamlit Cloud).
+            """
+        )
 
     work_dir = default_work_dir()
     default_database = Path(
@@ -75,12 +90,17 @@ def main() -> None:
         portfolio_path = Path(
             st.text_input("Portfolio database", value=str(default_portfolio))
         )
+        database_path.parent.mkdir(parents=True, exist_ok=True)
         store = ResearchStore(database_path) if database_path.exists() else None
         if store is None:
-            st.warning(
-                f"Research database not found: {database_path}. "
-                "Research tabs stay empty until you persist walk-forward results."
+            st.info(
+                "No research saved yet. Use **Run research** below to create your first snapshots."
             )
+        st.header("Research")
+        if render_run_research_controls(database_path, key_prefix="sidebar"):
+            st.rerun()
+        st.header("Your data")
+        render_database_backup_panel(database_path, portfolio_path)
         options = filter_options(store) if store is not None else {
             "symbols": [],
             "as_of_dates": [],
@@ -103,13 +123,23 @@ def main() -> None:
             index=0,
         )
 
-    snapshots_tab, profile_tab, orchestration_tab, portfolio_tab = st.tabs(
-        ["Snapshots", "Profile review", "Orchestration runs", "Portfolio"]
+    snapshots_tab, profile_tab, orchestration_tab, mf_tab, portfolio_tab = st.tabs(
+        [
+            "Snapshots",
+            "Profile review",
+            "Orchestration runs",
+            "Top mutual funds",
+            "Portfolio",
+        ]
     )
 
     with snapshots_tab:
         if store is None:
-            st.info("Load or create a research database to browse snapshots.")
+            st.info(
+                "You have not run research yet. Choose a stock list and click the button below."
+            )
+            if render_run_research_controls(database_path, key_prefix="snapshots"):
+                st.rerun()
         else:
             metrics = overview_metrics(store)
             _render_overview(metrics)
@@ -126,10 +156,9 @@ def main() -> None:
 
             st.subheader("Research snapshots")
             if summary.empty:
-                st.info(
-                    "No persisted research snapshots match the current filters. "
-                    "Run `orchestrate` or `walkforward` with `--persist` first."
-                )
+                st.info("No snapshots match your filters, or you have not run research yet.")
+                if render_run_research_controls(database_path, key_prefix="snapshots_empty"):
+                    st.rerun()
             else:
                 st.dataframe(summary, use_container_width=True, hide_index=True)
                 detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
@@ -147,6 +176,9 @@ def main() -> None:
 
     with orchestration_tab:
         _render_orchestration_runs(database_path)
+
+    with mf_tab:
+        render_top_mutual_funds_tab(portfolio_path)
 
     with portfolio_tab:
         _render_portfolio(portfolio_path, database_path)
@@ -229,10 +261,12 @@ def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
             "Import a tradebook export for equity XIRR and history."
         )
 
-    _render_mf_peer_comparison(portfolio_path)
+    reports = _render_mf_peer_comparison(portfolio_path)
+    if not summary.mutual_funds.empty:
+        render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
 
 
-def _render_mf_peer_comparison(portfolio_path: Path) -> None:
+def _render_mf_peer_comparison(portfolio_path: Path) -> list:
     st.markdown("**Mutual fund peer comparison (SEBI category)**")
     st.caption(
         "Compares Direct vs Regular and Growth vs IDCW separately using cached NAV "
@@ -256,8 +290,9 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> None:
     if not reports:
         st.info(
             "Import mutual fund holdings with AMFI scheme codes to see category peers. "
-            "Run `portfolio sync-mf-master` once to populate categories."
+            "Use **Top mutual funds** to refresh the AMFI fund list if categories are missing."
         )
+        return reports
     else:
         for report in reports:
             held = report.held_fund
@@ -296,7 +331,7 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> None:
     options = list_mf_scheme_options(portfolio_path)
     if options.empty:
         st.caption("Load AMFI scheme master to pick funds for side-by-side comparison.")
-        return
+        return reports
     labels = {
         str(row["scheme_code"]): f"{row['scheme_code']} — {row['scheme_name']}"
         for row in options.to_dict(orient="records")
@@ -314,6 +349,7 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> None:
             use_container_width=True,
             hide_index=True,
         )
+    return reports
 
 
 def _format_inr(value: object) -> str:
@@ -328,8 +364,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     calibration_summary = None
     if not run_options:
         st.info(
-            "No orchestration runs recorded yet. Run `orchestrate` or "
-            "`schedule run-quarterly` with `--persist` to review universe calibration."
+            "No orchestration runs yet. Start **Run research** from the Snapshots tab or sidebar."
         )
     else:
         labels = {option["run_key"]: option["label"] for option in run_options}
@@ -376,7 +411,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
             hide_index=True,
         )
     else:
-        st.info("No saved scoring profile versions yet. Use `profiles apply` after calibration.")
+        st.info("No saved scoring profile versions yet.")
 
     _render_profile_version_diff(database_path, calibration_summary)
 
@@ -384,8 +419,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     report = calibration_report(store)
     if report.score_buckets.empty and report.threshold_suggestions.empty:
         st.info(
-            "No persisted snapshots are available for calibration review. "
-            "Run `orchestrate` or `calibrate` after a universe walk-forward."
+            "No snapshots available for calibration review. Run research from the Snapshots tab first."
         )
         return
 
@@ -401,10 +435,7 @@ def _render_profile_version_diff(
     version_labels = {option.profile_version: option.label for option in options}
     default_base, default_compare = default_profile_diff_versions(database_path)
     if default_base == default_compare and len(options) <= 1:
-        st.info(
-            "Save a candidate profile with `profiles apply` to compare it against the "
-            "active or baseline thresholds before activation."
-        )
+        st.info("Save a candidate profile to compare threshold versions before activation.")
         return
 
     columns = st.columns(3)
@@ -564,10 +595,7 @@ def _render_orchestration_runs(database_path: Path) -> None:
     st.subheader("Universe orchestration runs")
     runs = orchestration_runs(database_path)
     if runs.empty:
-        st.info(
-            "No orchestration runs recorded yet. Schedule `orchestrate` for a full "
-            "Nifty universe walk-forward."
-        )
+        st.info("No orchestration runs yet. Use **Run research** to create one.")
         return
     st.dataframe(runs, use_container_width=True, hide_index=True)
 
@@ -643,10 +671,7 @@ def _render_detail(store: ResearchStore, *, symbol: str, as_of: str) -> None:
         store, symbol=symbol, as_of=as_of
     )
     if explanation is None:
-        st.info(
-            "No persisted explanation exists for this snapshot. "
-            "Re-run research with `--explain` or use the `explain` CLI command."
-        )
+        st.info("No explanation was saved for this snapshot. Run research again from the sidebar.")
         return
 
     st.markdown("**Score drivers**")

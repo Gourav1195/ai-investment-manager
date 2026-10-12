@@ -18,6 +18,7 @@ PORT = int(os.environ.get("QA_STREAMLIT_PORT", "8520"))
 def _start_streamlit(work_dir: Path) -> subprocess.Popen[bytes]:
     env = os.environ.copy()
     env["INVESTING_WORK_DIR"] = str(work_dir)
+    env["INVESTING_UI_RESEARCH_OFFLINE"] = "1"
     env.pop("INVESTING_PORTFOLIO_DB", None)
     env.pop("INVESTING_RESEARCH_DB", None)
     return subprocess.Popen(
@@ -94,7 +95,27 @@ def main() -> int:
 
             click_tab("Snapshots")
             page.wait_for_timeout(1000)
-            page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots.png"), full_page=True)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-empty.png"), full_page=True)
+            page.get_by_role("button", name="Run research").first.click()
+            page.wait_for_timeout(15000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-after-research.png"), full_page=True)
+
+            click_tab("Profile review")
+            page.wait_for_timeout(2000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-profile.png"), full_page=True)
+
+            click_tab("Orchestration runs")
+            page.wait_for_timeout(1000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-orchestration.png"), full_page=True)
+
+            click_tab("Top mutual funds")
+            page.wait_for_timeout(2000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-top-mf.png"), full_page=True)
+
+            click_tab("Portfolio")
+            page.get_by_role("button", name="Load anonymized example portfolio").click()
+            page.wait_for_timeout(5000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-portfolio-mf-charts.png"), full_page=True)
             browser.close()
     finally:
         process.terminate()

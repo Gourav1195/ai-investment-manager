@@ -12,7 +12,7 @@ from src.investing.research import (
     fiscal_quarter_end_dates,
     walkforward_report,
 )
-from tests.test_fundamental_calculator import non_bank_history
+from src.investing.demo_filing_data import non_bank_history
 
 
 class FakeFilingStore:
