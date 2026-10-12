@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ PORT = int(os.environ.get("QA_STREAMLIT_PORT", "8520"))
 def _start_streamlit(work_dir: Path) -> subprocess.Popen[bytes]:
     env = os.environ.copy()
     env["INVESTING_WORK_DIR"] = str(work_dir)
+    env["INVESTING_UI_RESEARCH_OFFLINE"] = "1"
     env.pop("INVESTING_PORTFOLIO_DB", None)
     env.pop("INVESTING_RESEARCH_DB", None)
     return subprocess.Popen(
@@ -65,7 +67,7 @@ def main() -> int:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=India Long-Term Research Dashboard", timeout=120_000)
+            page.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
 
             def click_tab(label: str) -> None:
                 page.get_by_role("tab", name=label).click()
@@ -73,14 +75,16 @@ def main() -> int:
             click_tab("Portfolio")
             page.wait_for_timeout(2000)
             page.screenshot(
-                path=str(ARTIFACTS / "cloud-portfolio-empty.png"),
+                path=str(ARTIFACTS / "cloud-portfolio-step1-guide.png"),
                 full_page=True,
             )
-
-            page.get_by_role("button", name="Load anonymized example portfolio").click()
-            page.wait_for_timeout(4000)
+            page.get_by_role(
+                "button",
+                name="Try demo portfolio first (no files needed)",
+            ).click()
+            page.wait_for_timeout(8000)
             page.screenshot(
-                path=str(ARTIFACTS / "cloud-portfolio-examples-loaded.png"),
+                path=str(ARTIFACTS / "cloud-portfolio-after-demo.png"),
                 full_page=True,
             )
 
@@ -92,9 +96,30 @@ def main() -> int:
                 full_page=True,
             )
 
-            click_tab("Snapshots")
+            click_tab("Stock Research")
+            page.wait_for_timeout(500)
+            page.get_by_role("tab", name="Snapshots").click()
             page.wait_for_timeout(1000)
-            page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots.png"), full_page=True)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-empty.png"), full_page=True)
+            page.get_by_role("button", name="Run research").first.click()
+            page.wait_for_timeout(15000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-after-research.png"), full_page=True)
+
+            page.get_by_role("tab", name="Profile review").click()
+            page.wait_for_timeout(2000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-profile.png"), full_page=True)
+
+            page.get_by_role("tab", name="Orchestration runs").click()
+            page.wait_for_timeout(1000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-orchestration.png"), full_page=True)
+
+            click_tab("Top Mutual Funds")
+            page.wait_for_timeout(2000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-tab-top-mf.png"), full_page=True)
+
+            click_tab("My Mutual Funds")
+            page.wait_for_timeout(5000)
+            page.screenshot(path=str(ARTIFACTS / "cloud-portfolio-mf-charts.png"), full_page=True)
             browser.close()
     finally:
         process.terminate()

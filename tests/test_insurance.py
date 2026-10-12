@@ -9,7 +9,7 @@ from src.investing.filings import FilingStore, IST
 from src.investing.fundamentals import CanonicalFactMapper, FundamentalCalculator, MAPPING_VERSION
 from src.investing.scoring import LongTermScorer
 from src.investing.market import snapshots_to_scorer_frame
-from tests.test_fundamental_calculator import duration, instant
+from src.investing.demo_filing_data import duration, instant
 from src.investing.insurance import (
     CORE_INSURANCE_CONCEPTS,
     GENERAL_INSURANCE_CONCEPTS,

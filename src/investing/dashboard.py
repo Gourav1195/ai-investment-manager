@@ -29,6 +29,7 @@ from .dashboard_data import (
     snapshot_detail,
     snapshot_summary_frame,
 )
+from .portfolio_store import PortfolioStore
 from .portfolio_dashboard_data import (
     format_holdings_table,
     format_mf_returns_table,
@@ -38,10 +39,26 @@ from .portfolio_dashboard_data import (
     load_portfolio_summary,
     portfolio_has_data,
 )
+from .app_preferences import AppPreferences
 from .cloud_auth import require_app_password
+from .mf_rankings_ui import render_top_mutual_funds_tab
 from .portfolio_cloud_ui import render_portfolio_import_panel
+from .portfolio_mf_charts import render_mutual_fund_charts
 from .repo_bootstrap import default_work_dir
 from .research import ResearchStore
+from .friendly_copy import TERM_HELP, friendly_runtime_error
+from .onboarding_ui import maybe_auto_load_demo_for_qa, render_first_run_wizard
+from .royal_theme import (
+    apply_royal_theme,
+    render_empty_state,
+    render_friendly_error,
+    render_term_glossary,
+    render_welcome_header,
+    render_wealth_hero,
+)
+from .ui_research import render_database_backup_panel, render_run_research_controls
+from .wealth_insights import load_wealth_snapshot, plain_english_insights
+from .about_ui import render_about_button
 
 DEFAULT_DATABASE = Path("work/research.db")
 DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
@@ -49,17 +66,19 @@ DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
 
 def main() -> None:
     st.set_page_config(
-        page_title="India Research Dashboard",
-        page_icon="📊",
+        page_title="Your Wealth Dashboard",
+        page_icon="👑",
         layout="wide",
     )
+    apply_royal_theme()
     require_app_password()
-    st.title("India Long-Term Research Dashboard")
-    st.caption(
-        "Research classifications for further investigation. Not investment advice. "
-        "Scores and rankings are deterministic and auditable."
-    )
+    try:
+        _run_dashboard()
+    except Exception as error:  # noqa: BLE001 — show friendly message, not traceback
+        render_friendly_error(friendly_runtime_error(error))
 
+
+def _run_dashboard() -> None:
     work_dir = default_work_dir()
     default_database = Path(
         os.environ.get("INVESTING_RESEARCH_DB", work_dir / "research.db")
@@ -67,113 +86,203 @@ def main() -> None:
     default_portfolio = Path(
         os.environ.get("INVESTING_PORTFOLIO_DB", work_dir / "portfolio.db")
     )
-    with st.sidebar:
-        st.header("Databases")
-        database_path = Path(
-            st.text_input("Research database", value=str(default_database))
-        )
-        portfolio_path = Path(
-            st.text_input("Portfolio database", value=str(default_portfolio))
-        )
-        store = ResearchStore(database_path) if database_path.exists() else None
-        if store is None:
-            st.warning(
-                f"Research database not found: {database_path}. "
-                "Research tabs stay empty until you persist walk-forward results."
-            )
-        options = filter_options(store) if store is not None else {
-            "symbols": [],
-            "as_of_dates": [],
-            "research_views": [],
-        }
-        st.header("Filters")
-        symbol = st.selectbox(
-            "Symbol",
-            ["All"] + options["symbols"],
-            index=0,
-        )
-        as_of = st.selectbox(
-            "As-of date",
-            ["All"] + options["as_of_dates"],
-            index=0,
-        )
-        research_view = st.selectbox(
-            "Research view",
-            ["All"] + options["research_views"],
-            index=0,
-        )
+    prefs = AppPreferences(work_dir / "ui_prefs.json")
+    database_path = default_database
+    portfolio_path = default_portfolio
 
-    snapshots_tab, profile_tab, orchestration_tab, portfolio_tab = st.tabs(
-        ["Snapshots", "Profile review", "Orchestration runs", "Portfolio"]
+    with st.sidebar:
+        stored_name = prefs.get_display_name()
+        name = st.text_input(
+            "Your name (optional)",
+            value=stored_name,
+            placeholder="e.g. Gourav",
+            key="royal_display_name",
+        )
+        if name != stored_name:
+            prefs.set_display_name(name)
+        render_about_button(key="sidebar_about_app")
+        with st.expander("Quick guide", expanded=False):
+            st.markdown(
+                """
+**Portfolio** — Import Zerodha files or load the demo.  
+**My Mutual Funds** — See how your funds compare to peers.  
+**Top Mutual Funds** — Explore category leaders.  
+**Stock Research** — Optional long-term stock scoring.
+                """
+            )
+        with st.expander("Advanced", expanded=False):
+            st.caption("Database paths and backups (usually leave as default).")
+            database_path = Path(
+                st.text_input("Research database", value=str(default_database))
+            )
+            portfolio_path = Path(
+                st.text_input("Portfolio database", value=str(default_portfolio))
+            )
+            database_path.parent.mkdir(parents=True, exist_ok=True)
+            if render_run_research_controls(database_path, key_prefix="sidebar"):
+                st.rerun()
+            render_database_backup_panel(database_path, portfolio_path)
+    database_path = Path(database_path)
+    portfolio_path = Path(portfolio_path)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    maybe_auto_load_demo_for_qa(portfolio_path, prefs)
+
+    store = ResearchStore(database_path) if database_path.exists() else None
+    options = filter_options(store) if store is not None else {
+        "symbols": [],
+        "as_of_dates": [],
+        "research_views": [],
+    }
+
+    welcome_col, about_col = st.columns([6, 1])
+    with welcome_col:
+        render_welcome_header(name.strip())
+    with about_col:
+        render_about_button(key="header_about_app")
+    st.markdown(
+        '<p class="royal-disclaimer">For your information only — not investment advice.</p>',
+        unsafe_allow_html=True,
+    )
+    render_term_glossary()
+
+    try:
+        wealth, _summary, peer_reports = load_wealth_snapshot(
+            portfolio_path,
+            database_path,
+            refresh_prices=False,
+        )
+    except Exception as error:  # noqa: BLE001
+        render_friendly_error(friendly_runtime_error(error))
+        from .wealth_insights import WealthSnapshot
+
+        wealth = WealthSnapshot(None, None, None, None, None, False)
+        peer_reports = []
+
+    render_wealth_hero(
+        total_value=wealth.total_value,
+        total_pnl=wealth.total_pnl,
+        xirr=wealth.xirr,
+        today_change=wealth.today_change,
+        today_change_pct=wealth.today_change_pct,
+        insights=plain_english_insights(peer_reports),
     )
 
-    with snapshots_tab:
-        if store is None:
-            st.info("Load or create a research database to browse snapshots.")
-        else:
-            metrics = overview_metrics(store)
-            _render_overview(metrics)
-
-            selected_symbol = None if symbol == "All" else symbol
-            selected_as_of = None if as_of == "All" else as_of
-            selected_view = None if research_view == "All" else research_view
-            summary = snapshot_summary_frame(
-                store,
-                symbol=selected_symbol,
-                as_of=selected_as_of,
-                research_view=selected_view,
-            )
-
-            st.subheader("Research snapshots")
-            if summary.empty:
-                st.info(
-                    "No persisted research snapshots match the current filters. "
-                    "Run `orchestrate` or `walkforward` with `--persist` first."
-                )
-            else:
-                st.dataframe(summary, use_container_width=True, hide_index=True)
-                detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
-                detail_as_of = selected_as_of or summary.iloc[0]["as_of"]
-                with st.expander(
-                    f"Detail: {detail_symbol} as of {detail_as_of}", expanded=True
-                ):
-                    _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
-
-    with profile_tab:
-        if store is None:
-            st.info("Profile review requires a research database.")
-        else:
-            _render_profile_review(database_path, store)
-
-    with orchestration_tab:
-        _render_orchestration_runs(database_path)
+    portfolio_tab, my_mf_tab, top_mf_tab, research_tab = st.tabs(
+        ["Portfolio", "My Mutual Funds", "Top Mutual Funds", "Stock Research"],
+    )
 
     with portfolio_tab:
-        _render_portfolio(portfolio_path, database_path)
+        _render_portfolio(portfolio_path, database_path, prefs)
+
+    with my_mf_tab:
+        _render_my_mutual_funds(portfolio_path)
+
+    with top_mf_tab:
+        render_top_mutual_funds_tab(portfolio_path)
+
+    with research_tab:
+        snap_tab, profile_tab, orch_tab = st.tabs(
+            ["Snapshots", "Profile review", "Orchestration runs"],
+        )
+        with snap_tab:
+            symbol = st.selectbox(
+                "Symbol filter",
+                ["All"] + options["symbols"],
+                index=0,
+                key="research_symbol_filter",
+            )
+            as_of = st.selectbox(
+                "As-of date filter",
+                ["All"] + options["as_of_dates"],
+                index=0,
+                key="research_asof_filter",
+            )
+            research_view = st.selectbox(
+                "Research view filter",
+                ["All"] + options["research_views"],
+                index=0,
+                key="research_view_filter",
+            )
+            if store is None:
+                render_empty_state(
+                    "📈",
+                    "Stock research is empty",
+                    "Run a quick research pass to see scores and explanations for Indian stocks.",
+                )
+                if render_run_research_controls(database_path, key_prefix="snapshots"):
+                    st.rerun()
+            else:
+                metrics = overview_metrics(store)
+                _render_overview(metrics)
+                selected_symbol = None if symbol == "All" else symbol
+                selected_as_of = None if as_of == "All" else as_of
+                selected_view = None if research_view == "All" else research_view
+                summary = snapshot_summary_frame(
+                    store,
+                    symbol=selected_symbol,
+                    as_of=selected_as_of,
+                    research_view=selected_view,
+                )
+                st.markdown('<h3 class="royal-section-title">Research snapshots</h3>', unsafe_allow_html=True)
+                if summary.empty:
+                    render_empty_state(
+                        "🔍",
+                        "No snapshots yet",
+                        "Adjust filters or run research to populate this view.",
+                    )
+                    if render_run_research_controls(database_path, key_prefix="snapshots_empty"):
+                        st.rerun()
+                else:
+                    st.dataframe(summary, use_container_width=True, hide_index=True)
+                    detail_symbol = selected_symbol or summary.iloc[0]["symbol"]
+                    detail_as_of = selected_as_of or summary.iloc[0]["as_of"]
+                    with st.expander(
+                        f"Detail: {detail_symbol} as of {detail_as_of}", expanded=True
+                    ):
+                        _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
+        with profile_tab:
+            if store is None:
+                render_empty_state(
+                    "⚙️",
+                    "Profile review needs research data",
+                    "Run stock research first, then return here to review scoring rules.",
+                )
+            else:
+                _render_profile_review(database_path, store)
+        with orch_tab:
+            _render_orchestration_runs(database_path)
 
 
-def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
-    st.subheader("Zerodha portfolio tracker")
-    st.caption(
-        "Imports from Zerodha Console or read-only Kite Connect sync. "
-        "Not investment advice."
-    )
-    render_portfolio_import_panel(portfolio_path)
+def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPreferences) -> None:
+    st.markdown('<h3 class="royal-section-title">Your Zerodha portfolio</h3>', unsafe_allow_html=True)
     if not portfolio_path.exists() or not portfolio_has_data(portfolio_path):
-        st.info(
-            "No portfolio data yet. Use **Load anonymized example portfolio** above "
-            "or upload Zerodha Console CSV/XLSX exports. Data stays in this session "
-            "on Streamlit Cloud."
+        render_first_run_wizard(
+            portfolio_path,
+            prefs,
+            import_panel_renderer=render_portfolio_import_panel,
         )
         return
 
+    from .onboarding_ui import _render_step_two_banner
+
+    _render_step_two_banner()
+
+    with st.expander("Add or replace files from Zerodha Console", expanded=False):
+        render_portfolio_import_panel(portfolio_path)
+
     benchmark_index = st.selectbox(
-        "Benchmark",
+        "Compare my stocks to",
         ["NIFTY 50", "NIFTY 100", "NIFTY 200"],
         index=0,
         key="portfolio_benchmark",
+        help=TERM_HELP["benchmark"],
     )
-    refresh = st.checkbox("Refresh live prices and NAVs", value=True, key="portfolio_refresh")
+    refresh = st.checkbox(
+        "Update live prices and fund values",
+        value=True,
+        key="portfolio_refresh",
+        help="Turn off if the page feels slow; we will use the last saved prices.",
+    )
     research_db = research_path if research_path.exists() else None
     try:
         summary, comparison = load_portfolio_summary(
@@ -182,17 +291,30 @@ def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
             refresh_prices=refresh,
             benchmark_index=benchmark_index,
         )
-    except Exception as error:  # noqa: BLE001 - surface provider failures in UI
-        st.error(f"Could not load portfolio: {error}")
+    except Exception as error:  # noqa: BLE001
+        render_friendly_error(friendly_runtime_error(error))
         return
 
     columns = st.columns(4)
-    columns[0].metric("Invested", _format_inr(summary.totals.get("invested")))
-    columns[1].metric("Current value", _format_inr(summary.totals.get("current_value")))
-    columns[2].metric("P&L", _format_inr(summary.totals.get("pnl")))
+    columns[0].metric(
+        "Money you put in",
+        _format_inr(summary.totals.get("invested")),
+        help="Total amount invested in stocks and mutual funds.",
+    )
+    columns[1].metric(
+        "Worth today",
+        _format_inr(summary.totals.get("current_value")),
+        help="Current market value of your holdings.",
+    )
+    columns[2].metric(
+        "Profit or loss",
+        _format_inr(summary.totals.get("pnl")),
+        help=TERM_HELP["pnl"],
+    )
     columns[3].metric(
-        "XIRR",
-        f"{summary.xirr * 100:.2f}%" if summary.xirr is not None else "—",
+        "Annual return (XIRR)",
+        _format_xirr(summary.xirr),
+        help=TERM_HELP["xirr"],
     )
     if summary.absolute_return_pct is not None:
         st.caption(
@@ -224,15 +346,41 @@ def _render_portfolio(portfolio_path: Path, research_path: Path) -> None:
         chart = comparison.set_index("date")[["portfolio_indexed", "benchmark_indexed"]]
         st.line_chart(chart)
     else:
-        st.info(
-            "Benchmark chart needs trade history and price data. "
-            "Import a tradebook export for equity XIRR and history."
+        render_empty_state(
+            "📉",
+            "Benchmark chart needs a tradebook",
+            "Upload your Zerodha tradebook export to compare performance against Nifty.",
         )
 
-    _render_mf_peer_comparison(portfolio_path)
+
+def _render_my_mutual_funds(portfolio_path: Path) -> None:
+    st.markdown('<h3 class="royal-section-title">My mutual funds</h3>', unsafe_allow_html=True)
+    st.caption("See how your Coin / MF holdings compare with others in the same SEBI category.")
+    if not portfolio_path.exists() or not portfolio_has_data(portfolio_path):
+        render_empty_state(
+            "🪙",
+            "No mutual fund holdings yet",
+            "Load the demo portfolio or upload your MF holdings file from Zerodha Console.",
+        )
+        return
+    reports = _render_mf_peer_comparison(portfolio_path)
+    store = PortfolioStore(portfolio_path)
+    mf = store.list_mf_holdings()
+    if mf.empty:
+        render_empty_state(
+            "🪙",
+            "Add mutual fund holdings",
+            "Your portfolio file did not include MF rows — upload an MF holdings export.",
+        )
+        return
+    from .portfolio_dashboard_data import load_portfolio_summary
+
+    summary, _ = load_portfolio_summary(portfolio_path, None, refresh_prices=False)
+    if not summary.mutual_funds.empty:
+        render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
 
 
-def _render_mf_peer_comparison(portfolio_path: Path) -> None:
+def _render_mf_peer_comparison(portfolio_path: Path) -> list:
     st.markdown("**Mutual fund peer comparison (SEBI category)**")
     st.caption(
         "Compares Direct vs Regular and Growth vs IDCW separately using cached NAV "
@@ -254,10 +402,12 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> None:
         reports = []
 
     if not reports:
-        st.info(
-            "Import mutual fund holdings with AMFI scheme codes to see category peers. "
-            "Run `portfolio sync-mf-master` once to populate categories."
+        render_empty_state(
+            "📊",
+            "Peer comparison needs fund codes",
+            "Import MF holdings with AMFI scheme codes, then refresh the fund list on Top Mutual Funds.",
         )
+        return reports
     else:
         for report in reports:
             held = report.held_fund
@@ -296,7 +446,7 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> None:
     options = list_mf_scheme_options(portfolio_path)
     if options.empty:
         st.caption("Load AMFI scheme master to pick funds for side-by-side comparison.")
-        return
+        return reports
     labels = {
         str(row["scheme_code"]): f"{row['scheme_code']} — {row['scheme_name']}"
         for row in options.to_dict(orient="records")
@@ -314,6 +464,19 @@ def _render_mf_peer_comparison(portfolio_path: Path) -> None:
             use_container_width=True,
             hide_index=True,
         )
+    return reports
+
+
+def _format_xirr(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if number != number:  # NaN
+        return "—"
+    return f"{number * 100:.2f}%"
 
 
 def _format_inr(value: object) -> str:
@@ -328,8 +491,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     calibration_summary = None
     if not run_options:
         st.info(
-            "No orchestration runs recorded yet. Run `orchestrate` or "
-            "`schedule run-quarterly` with `--persist` to review universe calibration."
+            "No orchestration runs yet. Start **Run research** from the Snapshots tab or sidebar."
         )
     else:
         labels = {option["run_key"]: option["label"] for option in run_options}
@@ -376,7 +538,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
             hide_index=True,
         )
     else:
-        st.info("No saved scoring profile versions yet. Use `profiles apply` after calibration.")
+        st.info("No saved scoring profile versions yet.")
 
     _render_profile_version_diff(database_path, calibration_summary)
 
@@ -384,8 +546,7 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
     report = calibration_report(store)
     if report.score_buckets.empty and report.threshold_suggestions.empty:
         st.info(
-            "No persisted snapshots are available for calibration review. "
-            "Run `orchestrate` or `calibrate` after a universe walk-forward."
+            "No snapshots available for calibration review. Run research from the Snapshots tab first."
         )
         return
 
@@ -401,10 +562,7 @@ def _render_profile_version_diff(
     version_labels = {option.profile_version: option.label for option in options}
     default_base, default_compare = default_profile_diff_versions(database_path)
     if default_base == default_compare and len(options) <= 1:
-        st.info(
-            "Save a candidate profile with `profiles apply` to compare it against the "
-            "active or baseline thresholds before activation."
-        )
+        st.info("Save a candidate profile to compare threshold versions before activation.")
         return
 
     columns = st.columns(3)
@@ -564,9 +722,10 @@ def _render_orchestration_runs(database_path: Path) -> None:
     st.subheader("Universe orchestration runs")
     runs = orchestration_runs(database_path)
     if runs.empty:
-        st.info(
-            "No orchestration runs recorded yet. Schedule `orchestrate` for a full "
-            "Nifty universe walk-forward."
+        render_empty_state(
+            "🗂️",
+            "No research runs logged yet",
+            "Open Stock Research → Snapshots and tap Run research.",
         )
         return
     st.dataframe(runs, use_container_width=True, hide_index=True)
@@ -643,10 +802,7 @@ def _render_detail(store: ResearchStore, *, symbol: str, as_of: str) -> None:
         store, symbol=symbol, as_of=as_of
     )
     if explanation is None:
-        st.info(
-            "No persisted explanation exists for this snapshot. "
-            "Re-run research with `--explain` or use the `explain` CLI command."
-        )
+        st.info("No explanation was saved for this snapshot. Run research again from the sidebar.")
         return
 
     st.markdown("**Score drivers**")

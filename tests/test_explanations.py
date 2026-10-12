@@ -9,7 +9,7 @@ from src.investing.filings import FilingStore, IST
 from src.investing.fundamentals import FundamentalSnapshot
 from src.investing.research import ResearchStore, _snapshot_key
 from tests.test_financial_filings import filing_record
-from tests.test_fundamental_calculator import non_bank_history
+from src.investing.demo_filing_data import non_bank_history
 from tests.test_walkforward import FakeFilingStore, synthetic_prices
 from src.investing.research import WalkForwardEvaluator
 
