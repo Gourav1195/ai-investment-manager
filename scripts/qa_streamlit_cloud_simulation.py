@@ -67,7 +67,7 @@ def main() -> int:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
+            page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
 
             def click_tab(label: str) -> None:
                 page.get_by_role("tab", name=label).click()
@@ -96,20 +96,18 @@ def main() -> int:
                 full_page=True,
             )
 
-            click_tab("Stock Research")
-            page.wait_for_timeout(500)
-            page.get_by_role("tab", name="Snapshots").click()
+            click_tab("Snapshots")
             page.wait_for_timeout(1000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-empty.png"), full_page=True)
             page.get_by_role("button", name="Run research").first.click()
             page.wait_for_timeout(15000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-after-research.png"), full_page=True)
 
-            page.get_by_role("tab", name="Profile review").click()
+            click_tab("Profile review")
             page.wait_for_timeout(2000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-profile.png"), full_page=True)
 
-            page.get_by_role("tab", name="Orchestration runs").click()
+            click_tab("Orchestration runs")
             page.wait_for_timeout(1000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-orchestration.png"), full_page=True)
 

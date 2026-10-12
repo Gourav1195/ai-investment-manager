@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 ARTIFACTS = Path(os.environ.get("QA_SCREENSHOT_DIR", "/opt/cursor/artifacts/screenshots"))
 PORT = int(os.environ.get("QA_STREAMLIT_PORT", "8521"))
 
@@ -55,25 +56,13 @@ def _wait_healthy(base: str, process: subprocess.Popen[bytes]) -> None:
 
 
 def _capture_tabs(page, prefix: str) -> None:
-    tabs = [
-        "Portfolio",
-        "My Mutual Funds",
-        "Top Mutual Funds",
-        "Stock Research",
-    ]
-    for label in tabs:
+    from src.investing.dashboard import TOP_LEVEL_TABS
+
+    for label in TOP_LEVEL_TABS:
         page.get_by_role("tab", name=label).click()
         page.wait_for_timeout(1500)
         safe = label.lower().replace(" ", "-")
         page.screenshot(path=str(ARTIFACTS / f"{prefix}-tab-{safe}.png"), full_page=True)
-
-    page.get_by_role("tab", name="Stock Research").click()
-    page.wait_for_timeout(500)
-    for inner in ("Snapshots", "Profile review", "Orchestration runs"):
-        page.get_by_role("tab", name=inner).click()
-        page.wait_for_timeout(1200)
-        safe = inner.lower().replace(" ", "-")
-        page.screenshot(path=str(ARTIFACTS / f"{prefix}-research-{safe}.png"), full_page=True)
 
 
 def main() -> int:
@@ -90,7 +79,7 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
+            desktop.wait_for_selector("text=Wealth at a glance", timeout=120_000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-before-desktop-home.png"), full_page=True)
             desktop.get_by_role("button", name="About this app").first.click()
             desktop.wait_for_timeout(1500)
@@ -106,7 +95,6 @@ def main() -> int:
             desktop.wait_for_timeout(5000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-after-desktop-portfolio.png"), full_page=True)
 
-            desktop.get_by_role("tab", name="Stock Research").click()
             desktop.get_by_role("tab", name="Snapshots").click()
             desktop.get_by_role("button", name="Run research").first.click()
             desktop.wait_for_timeout(15000)
@@ -115,7 +103,7 @@ def main() -> int:
 
             mobile = browser.new_page(viewport={"width": 390, "height": 844})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            mobile.wait_for_selector("text=Your wealth at a glance", timeout=120_000)
+            mobile.wait_for_selector("text=Wealth at a glance", timeout=120_000)
             mobile.screenshot(path=str(ARTIFACTS / "royal-after-mobile-home.png"), full_page=True)
             mobile.get_by_role("tab", name="My Mutual Funds").click()
             mobile.wait_for_timeout(3000)
