@@ -1422,7 +1422,7 @@ def launch_dashboard(
     import os
     import subprocess
 
-    script = Path(__file__).resolve().parent / "dashboard.py"
+    script = Path(__file__).resolve().parent / "dashboard_streamlit.py"
     env = os.environ.copy()
     env["INVESTING_RESEARCH_DB"] = str(database.resolve())
     if portfolio_database is not None:

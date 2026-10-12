@@ -172,6 +172,8 @@ class YFinancePriceProvider:
         the ``.NS`` suffix used by Yahoo Finance.
         """
 
+        start = _yahoo_date_only(start)
+        end = _yahoo_date_only(end)
         requested = [self._as_yahoo_symbol(symbol) for symbol in symbols]
         requested = list(dict.fromkeys(requested))
         if not requested:
@@ -263,4 +265,14 @@ class YFinancePriceProvider:
         for column in output_columns:
             if column not in normalized:
                 normalized[column] = pd.NA
+        normalized["date"] = normalized["date"].dt.strftime("%Y-%m-%d")
         return normalized.loc[normalized["close"].notna(), output_columns]
+
+
+def _yahoo_date_only(value: str) -> str:
+    """Yahoo Finance rejects timestamps with a time component in start/end."""
+
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        raise ValueError(f"Invalid Yahoo Finance date: {value}")
+    return parsed.strftime("%Y-%m-%d")

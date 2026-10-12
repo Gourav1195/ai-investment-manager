@@ -237,15 +237,20 @@ def benchmark_comparison_series(
         return portfolio_values
     provider = provider or YFinancePriceProvider()
     symbol = nifty_benchmark_symbol(benchmark_index)
-    start = portfolio_values["date"].min()
-    end = portfolio_values["date"].max()
-    bench = provider.fetch([symbol], str(start), str(end))
+    values = portfolio_values.copy()
+    values["_date_key"] = values["date"].map(_date_key)
+    start = values["_date_key"].min()
+    end = values["_date_key"].max()
+    bench = provider.fetch([symbol], start, end)
     if bench.empty:
         return portfolio_values
     bench = bench.sort_values("date")[["date", "adj_close"]].rename(
         columns={"adj_close": "benchmark"}
     )
-    merged = portfolio_values.merge(bench, on="date", how="inner")
+    bench = bench.copy()
+    bench["_date_key"] = bench["date"].map(_date_key)
+    merged = values.merge(bench[["_date_key", "benchmark"]], on="_date_key", how="inner")
+    merged = merged.rename(columns={"_date_key": "date"})
     if merged.empty:
         return merged
     first_portfolio = merged["portfolio_value"].iloc[0]
@@ -320,6 +325,15 @@ def _latest_research_by_symbol(store: ResearchStore) -> dict[str, dict[str, obje
             "overall_score": record.get("overall_score"),
         }
     return result
+
+
+def _date_key(value: object) -> str:
+    text = str(value).strip()
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    if " " in text:
+        text = text.split(" ", 1)[0]
+    return text[:10]
 
 
 def _sum_column(frame: pd.DataFrame, column: str) -> float | None:

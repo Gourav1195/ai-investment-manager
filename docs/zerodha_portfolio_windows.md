@@ -17,7 +17,7 @@ Open **PowerShell** in the project folder:
 cd C:\path\to\ai-investment-manager
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install pandas numpy requests yfinance streamlit pytest openpyxl
+python -m pip install -r requirements-core.txt
 ```
 
 ## 2. Export files from Zerodha Console (no API key)
