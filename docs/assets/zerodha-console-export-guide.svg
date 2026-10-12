@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="320" viewBox="0 0 720 320" role="img" aria-label="Zerodha Console export steps">
+  <rect width="720" height="320" rx="12" fill="#151B3B"/>
+  <text x="24" y="36" fill="#F0D78C" font-family="Segoe UI, sans-serif" font-size="20" font-weight="600">Where to download files in Zerodha Console</text>
+  <rect x="24" y="56" width="200" height="240" rx="8" fill="#0B1026" stroke="#D4AF37" stroke-width="1"/>
+  <text x="40" y="88" fill="#F5F0E6" font-size="14" font-weight="600">1. Reports</text>
+  <text x="40" y="112" fill="#B8B2C8" font-size="12">Open menu - Reports</text>
+  <text x="40" y="148" fill="#F5F0E6" font-size="14" font-weight="600">2. Holdings</text>
+  <text x="40" y="172" fill="#B8B2C8" font-size="12">Equity or Mutual funds</text>
+  <text x="40" y="208" fill="#F5F0E6" font-size="14" font-weight="600">3. Download</text>
+  <text x="40" y="232" fill="#B8B2C8" font-size="12">CSV or Excel export</text>
+  <rect x="248" y="56" width="448" height="72" rx="8" fill="#1A1230" stroke="#D4AF37" stroke-opacity="0.5"/>
+  <text x="264" y="88" fill="#D4AF37" font-size="13" font-weight="600">Equity holdings file</text>
+  <text x="264" y="110" fill="#B8B2C8" font-size="12">Upload on Step 1  shows stocks you own today</text>
+  <rect x="248" y="140" width="448" height="72" rx="8" fill="#1A1230" stroke="#D4AF37" stroke-opacity="0.5"/>
+  <text x="264" y="172" fill="#D4AF37" font-size="13" font-weight="600">Tradebook file (optional but helpful)</text>
+  <text x="264" y="194" fill="#B8B2C8" font-size="12">Reports - Tradebook  for performance charts and annual return</text>
+  <rect x="248" y="224" width="448" height="72" rx="8" fill="#1A1230" stroke="#D4AF37" stroke-opacity="0.5"/>
+  <text x="264" y="256" fill="#D4AF37" font-size="13" font-weight="600">Mutual fund holdings file</text>
+  <text x="264" y="278" fill="#B8B2C8" font-size="12">Reports - Holdings - Mutual funds  for Coin / MF section</text>
+</svg>

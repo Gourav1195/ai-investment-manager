@@ -8,6 +8,9 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from .friendly_copy import TERM_HELP
+from .royal_theme import render_empty_state, style_plotly_figure
+
 from .mf_nav_client import MfNavClient
 from .mf_rankings import (
     CATEGORY_CHOICES,
@@ -65,11 +68,16 @@ def render_top_mutual_funds_tab(portfolio_path: Path) -> None:
         option = st.selectbox("Option", ["Growth", "IDCW"], index=0, key="mf_rank_option")
     with col4:
         rank_by = st.selectbox(
-            "Rank by",
+            "Sort funds by",
             ["cagr_3y", "cagr_5y", "cagr_1y"],
-            format_func=lambda x: {"cagr_1y": "1-year return", "cagr_3y": "3-year return", "cagr_5y": "5-year return"}[x],
+            format_func=lambda x: {
+                "cagr_1y": "1-year average growth",
+                "cagr_3y": "3-year average growth",
+                "cagr_5y": "5-year average growth",
+            }[x],
             index=0,
             key="mf_rank_metric",
+            help=TERM_HELP["cagr"],
         )
     top_n = st.slider("Show top N funds", min_value=5, max_value=25, value=10, key="mf_rank_topn")
 
@@ -77,7 +85,11 @@ def render_top_mutual_funds_tab(portfolio_path: Path) -> None:
         st.session_state["mf_rank_run"] = True
 
     if not st.session_state.get("mf_rank_run"):
-        st.info("Choose a category and click **Load rankings** to see tables and charts.")
+        render_empty_state(
+            "🏆",
+            "Discover top funds in each category",
+            "Pick a category above, then tap Load rankings to compare 1-year, 3-year, and 5-year returns.",
+        )
         return
 
     progress = st.progress(0.0, text="Starting…")
@@ -129,7 +141,7 @@ def render_top_mutual_funds_tab(portfolio_path: Path) -> None:
         labels={rank_by: f"{metric_label} CAGR", "label": "Fund"},
     )
     fig_bar.update_layout(xaxis_tickangle=-45)
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(style_plotly_figure(fig_bar), use_container_width=True)
 
     names = {
         str(row["scheme_code"]): str(row["scheme_name"])[:35]
@@ -142,4 +154,4 @@ def render_top_mutual_funds_tab(portfolio_path: Path) -> None:
             title="NAV growth (each line starts at 100)",
         )
         fig_line.update_layout(yaxis_title="Indexed NAV", xaxis_title="Date")
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(style_plotly_figure(fig_line), use_container_width=True)
