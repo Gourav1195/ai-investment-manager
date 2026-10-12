@@ -7,6 +7,7 @@ dependencies so they can be tested independently of Streamlit.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any, Mapping
@@ -26,7 +27,9 @@ from .profile_diff import (
     profile_version_diff,
     profile_version_options,
 )
+from .filings import IST
 from .profile_store import ProfileVersionSummary, ScoringProfileStore
+from .scoring_profiles import BASELINE_PROFILE_VERSION
 from .research import ResearchStore
 
 SUMMARY_COLUMNS = [
@@ -224,8 +227,59 @@ def calibration_report(store: ResearchStore) -> CalibrationReport:
     return analyze_universe_backtest(snapshots)
 
 
+@dataclass(frozen=True)
+class ProfileActivationResult:
+    profile_version: int
+    activated_at: str | None
+    was_already_active: bool
+
+
 def profile_versions(database: str | Path) -> list[ProfileVersionSummary]:
     return ScoringProfileStore(database).list_versions()
+
+
+def profile_version_is_active(database: str | Path, profile_version: int) -> bool:
+    return ScoringProfileStore(database).is_active(profile_version)
+
+
+def profile_version_can_activate(database: str | Path, profile_version: int) -> tuple[bool, str]:
+    """Return whether a profile version can be activated and a user-facing reason."""
+
+    store = ScoringProfileStore(database)
+    if store.is_active(profile_version):
+        return False, f"Profile version {profile_version} is already active."
+    if profile_version == BASELINE_PROFILE_VERSION and not store.version_exists(
+        profile_version
+    ):
+        return True, "Revert to built-in baseline thresholds (v1)."
+    if store.version_exists(profile_version):
+        return True, f"Activate saved profile version {profile_version}."
+    return False, (
+        f"Profile version {profile_version} is not saved. "
+        "Apply thresholds with `profiles apply` first."
+    )
+
+
+def activate_scoring_profile(
+    database: str | Path,
+    profile_version: int,
+) -> ProfileActivationResult:
+    """Activate a scoring profile version (same semantics as `profiles activate`)."""
+
+    store = ScoringProfileStore(database)
+    if store.is_active(profile_version):
+        return ProfileActivationResult(
+            profile_version=profile_version,
+            activated_at=None,
+            was_already_active=True,
+        )
+    store.activate(profile_version)
+    activated_at = datetime.now(tz=IST).isoformat()
+    return ProfileActivationResult(
+        profile_version=profile_version,
+        activated_at=activated_at,
+        was_already_active=False,
+    )
 
 
 def profile_version_option_list(database: str | Path) -> list[ProfileVersionOption]:

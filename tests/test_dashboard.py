@@ -3,15 +3,20 @@ from __future__ import annotations
 from datetime import datetime
 
 from src.investing.dashboard_data import (
+    activate_scoring_profile,
     calibration_report,
     explanation_for_snapshot,
     filter_options,
     orchestration_calibration_summary,
     orchestration_runs,
     overview_metrics,
+    profile_version_can_activate,
+    profile_version_is_active,
     snapshot_detail,
     snapshot_summary_frame,
 )
+from src.investing.profile_store import ScoringProfileStore
+from src.investing.scoring_profiles import BASELINE_PROFILE_VERSION, metrics_for
 from src.investing.orchestration import OrchestrationStore, UniverseRunResult
 from src.investing.explanations import ScoreExplainer
 from src.investing.filings import IST
@@ -133,6 +138,27 @@ def test_orchestration_calibration_summary_recomputes_without_persisted_payload(
     assert summary is not None
     assert summary.source == "recomputed"
     assert not summary.report.score_buckets.empty
+
+
+def test_dashboard_profile_activation_helpers(tmp_path) -> None:
+    database = tmp_path / "research.db"
+    store = ScoringProfileStore(database)
+    store.save_version(2, {"non_bank": metrics_for("non_bank")}, source="test")
+
+    can_activate, _ = profile_version_can_activate(database, 2)
+    assert can_activate
+    assert not profile_version_is_active(database, 2)
+
+    result = activate_scoring_profile(database, 2)
+    assert not result.was_already_active
+    assert profile_version_is_active(database, 2)
+
+    repeat = activate_scoring_profile(database, 2)
+    assert repeat.was_already_active
+
+    activate_scoring_profile(database, BASELINE_PROFILE_VERSION)
+    assert profile_version_is_active(database, BASELINE_PROFILE_VERSION)
+    assert store.active_version() is None
 
 
 def test_filter_options_and_detail_include_explanation(tmp_path) -> None:

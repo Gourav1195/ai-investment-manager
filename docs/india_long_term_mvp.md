@@ -396,6 +396,8 @@ The diff table shows poor/strong threshold changes by entity type. When an orche
 selected above, the dashboard also flags candidate thresholds that do not match calibration
 suggestions.
 
-## Next data milestone
-
-Add one-click profile activation from the dashboard after diff review.
+After reviewing the diff, use **Activate candidate profile** in the same tab. The button stays
+disabled until you confirm the review checklist. When calibration alignment warnings are present,
+an additional acknowledgement is required before activation. Activating a candidate version updates
+the same `scoring_profile_active` record used by `profiles activate` and `--use-active-profile`.
+Select baseline v1 to revert to built-in thresholds without a saved profile row.

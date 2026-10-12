@@ -5,7 +5,7 @@ import pandas as pd
 from src.investing.calibration import build_profile_version
 from src.investing.profile_store import ScoringProfileStore
 from src.investing.scoring import LongTermScorer
-from src.investing.scoring_profiles import metrics_for
+from src.investing.scoring_profiles import BASELINE_PROFILE_VERSION, metrics_for
 
 
 def test_profile_store_saves_and_activates_version(tmp_path) -> None:
@@ -79,6 +79,18 @@ def test_scorer_uses_activated_profile(tmp_path) -> None:
     result = scorer.score(fundamentals)
 
     assert result.loc[0, "overall_score"] is not None
+
+
+def test_activate_baseline_clears_persisted_active_version(tmp_path) -> None:
+    store = ScoringProfileStore(tmp_path / "research.db")
+    profiles = {"non_bank": metrics_for("non_bank")}
+    store.save_version(2, profiles, source="test")
+    store.activate(2)
+
+    store.activate(BASELINE_PROFILE_VERSION)
+
+    assert store.active_version() is None
+    assert store.is_active(BASELINE_PROFILE_VERSION)
 
 
 def test_build_profile_version_keeps_defaults_for_small_samples() -> None:

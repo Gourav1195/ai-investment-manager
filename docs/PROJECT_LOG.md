@@ -839,7 +839,34 @@ Verification:
 
 ## Next milestones
 
-1. Add one-click profile activation from the dashboard after diff review.
+1. None currently tracked; see **Known limitations** for advisory calibration and data-source notes.
+
+### 2026-09-28 — Dashboard profile activation
+
+Goal:
+
+- Let operators activate a reviewed scoring profile version from the dashboard without switching
+  to the CLI.
+
+Changes:
+
+- Extended `ScoringProfileStore.activate` to revert to built-in baseline thresholds when v1 is
+  not persisted.
+- Added `activate_scoring_profile`, `profile_version_can_activate`, and
+  `profile_version_is_active` helpers in `dashboard_data.py`.
+- Added **Activate candidate profile** controls to the dashboard **Profile review** tab with
+  review and calibration-mismatch acknowledgements.
+- Documented the workflow in `docs/india_long_term_mvp.md`.
+- Added dashboard and profile-store activation tests.
+
+Decisions:
+
+- Dashboard activation writes the same SQLite active-profile state as `profiles activate`.
+- Calibration mismatches warn but do not block activation after explicit acknowledgement.
+
+Verification:
+
+- `python -m pytest tests -q`: **100 passed**.
 
 ### 2026-09-28 — Profile store and archive verification
 

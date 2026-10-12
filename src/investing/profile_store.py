@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Iterator, Mapping
 
 from .filings import IST
-from .scoring_profiles import INDUSTRY_PROFILES, Metric, metrics_for
+from .scoring_profiles import BASELINE_PROFILE_VERSION, INDUSTRY_PROFILES, Metric, metrics_for
 
 PROFILE_STORE_VERSION = 1
 
@@ -81,6 +81,12 @@ class ScoringProfileStore:
         return inserted
 
     def activate(self, profile_version: int) -> None:
+        if profile_version == BASELINE_PROFILE_VERSION and not self.version_exists(
+            profile_version
+        ):
+            with self._connect() as connection:
+                connection.execute("DELETE FROM scoring_profile_active WHERE id = 1")
+            return
         if not self.version_exists(profile_version):
             raise ValueError(f"Profile version {profile_version} does not exist")
         with self._connect() as connection:
@@ -94,6 +100,12 @@ class ScoringProfileStore:
                 """,
                 (profile_version, datetime.now(tz=IST).isoformat()),
             )
+
+    def is_active(self, profile_version: int) -> bool:
+        active = self.active_version()
+        if profile_version == BASELINE_PROFILE_VERSION:
+            return active in {None, BASELINE_PROFILE_VERSION}
+        return active == profile_version
 
     def active_version(self) -> int | None:
         with self._connect() as connection:
