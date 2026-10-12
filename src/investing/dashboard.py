@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from .dashboard_data import (
+    activate_scoring_profile,
     calibration_report,
     category_scores,
     default_profile_diff_versions,
@@ -20,7 +21,9 @@ from .dashboard_data import (
     orchestration_runs,
     overview_metrics,
     profile_calibration_alignment_frame,
+    profile_version_can_activate,
     profile_version_diff_frame,
+    profile_version_is_active,
     profile_version_option_list,
     profile_versions,
     snapshot_detail,
@@ -153,8 +156,8 @@ def _render_profile_review(database_path: Path, store: ResearchStore) -> None:
             )
             _render_calibration_tables(calibration_summary.report)
             st.info(
-                "Review threshold suggestions, export with `calibrate --report thresholds`, "
-                "then apply a new version with `profiles apply --activate`."
+                "Review threshold suggestions below, then activate a saved profile version "
+                "from the diff section after comparing changes."
             )
 
     st.subheader("Scoring profile versions")
@@ -253,8 +256,81 @@ def _render_profile_version_diff(
         else:
             st.warning(
                 f"{len(mismatches)} suggested thresholds differ from the candidate profile. "
-                "Review before `profiles activate`."
+                "Review the alignment table before activating."
             )
+
+    _render_profile_activation(
+        database_path,
+        compare_version=compare_version,
+        calibration_summary=calibration_summary,
+    )
+
+
+def _render_profile_activation(
+    database_path: Path,
+    *,
+    compare_version: int,
+    calibration_summary,
+) -> None:
+    st.markdown("**Activate candidate profile**")
+    can_activate, reason = profile_version_can_activate(database_path, compare_version)
+    is_active = profile_version_is_active(database_path, compare_version)
+
+    if is_active:
+        st.success(f"Profile version {compare_version} is the active scoring profile.")
+        return
+
+    st.caption(reason)
+    mismatch_count = 0
+    if (
+        calibration_summary is not None
+        and not calibration_summary.report.threshold_suggestions.empty
+    ):
+        alignment = profile_calibration_alignment_frame(
+            database_path,
+            profile_version=compare_version,
+            suggestions=calibration_summary.report.threshold_suggestions,
+        )
+        mismatch_count = int((~alignment["matches_suggestion"]).sum())
+
+    reviewed = st.checkbox(
+        "I reviewed the threshold diff and calibration alignment for this version.",
+        value=False,
+        key=f"profile_activate_reviewed_{compare_version}",
+    )
+    if mismatch_count > 0:
+        st.warning(
+            f"{mismatch_count} calibration suggestions do not match the candidate profile. "
+            "Confirm only if you intentionally diverge from the latest orchestration run."
+        )
+        acknowledge_mismatch = st.checkbox(
+            "I accept activating thresholds that differ from calibration suggestions.",
+            value=False,
+            key=f"profile_activate_mismatch_{compare_version}",
+        )
+    else:
+        acknowledge_mismatch = True
+
+    activate_disabled = not can_activate or not reviewed or not acknowledge_mismatch
+    if st.button(
+        f"Activate profile v{compare_version}",
+        type="primary",
+        disabled=activate_disabled,
+        key=f"profile_activate_button_{compare_version}",
+    ):
+        try:
+            result = activate_scoring_profile(database_path, compare_version)
+        except ValueError as error:
+            st.error(str(error))
+            return
+        if result.was_already_active:
+            st.info(f"Profile version {compare_version} was already active.")
+        else:
+            st.success(
+                f"Activated scoring profile version {compare_version}. "
+                "Future runs with `--use-active-profile` will use these thresholds."
+            )
+        st.rerun()
 
 
 def _option_index(options: dict[int, str], value: int) -> int:
