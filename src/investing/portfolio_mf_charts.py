@@ -8,6 +8,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from .royal_theme import style_plotly_figure
+
 from .mf_nav_client import MfNavClient
 from .mf_peer_comparison import PeerComparisonReport
 from .mf_rankings import _category_average_nav, normalized_nav_frame
@@ -29,7 +31,7 @@ def allocation_pie(holdings: pd.DataFrame) -> go.Figure | None:
         title="How your money is split across holdings",
     )
     fig.update_traces(textposition="inside", textinfo="percent+label")
-    return fig
+    return style_plotly_figure(fig)
 
 
 def pnl_bar(holdings: pd.DataFrame) -> go.Figure | None:
@@ -49,7 +51,7 @@ def pnl_bar(holdings: pd.DataFrame) -> go.Figure | None:
         title="Profit and loss by holding (₹)",
         labels={pnl_col: "P&L (₹)", "label": "Holding"},
     )
-    return fig
+    return style_plotly_figure(fig)
 
 
 def held_fund_vs_peers_chart(
@@ -72,7 +74,7 @@ def held_fund_vs_peers_chart(
         return None
     fig = px.line(wide, title="Your fund vs category (NAV indexed to 100)")
     fig.update_layout(yaxis_title="Indexed NAV (start = 100)", xaxis_title="Date")
-    return fig
+    return style_plotly_figure(fig)
 
 
 def build_peer_nav_chart(
@@ -109,7 +111,7 @@ def build_peer_nav_chart(
         yaxis_title="Indexed NAV",
         xaxis_title="Date",
     )
-    return fig
+    return style_plotly_figure(fig)
 
 
 def render_mutual_fund_charts(
@@ -194,4 +196,4 @@ def portfolio_value_over_time(
         title="Estimated mutual fund portfolio value over time",
         labels={"value": "Value (₹)", "date": "Date"},
     )
-    return fig
+    return style_plotly_figure(fig)

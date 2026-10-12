@@ -54,6 +54,13 @@ Everything runs in the browser—no command line required.
 
 Charts use Plotly; mutual fund data comes from AMFI + mfapi.in with local caching in SQLite.
 
+## Royal wealth UI
+
+The dashboard uses a navy / gold theme (`.streamlit/config.toml` plus in-app CSS). Your name,
+**Your wealth at a glance**, and mutual-fund insights appear at the top. Primary tabs are
+**Portfolio**, **My Mutual Funds**, and **Top Mutual Funds**; stock research lives under
+**Stock Research**. Database paths sit under **Advanced** in the sidebar.
+
 ## Local check (simulates Cloud cwd)
 
 ```bash
