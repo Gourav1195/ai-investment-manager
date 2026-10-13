@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import streamlit as st
 
-from .cloud_persistence import PersistenceMode, PersistenceState, is_cloud_persistence_configured
+from .cloud_persistence import (
+    PersistenceMode,
+    PersistenceState,
+    is_cloud_persistence_configured,
+    is_streamlit_community_cloud,
+)
 
 CLOUD_GUIDE_MARKDOWN = """
 ### Save your data across Streamlit restarts (optional)
@@ -78,6 +83,21 @@ def render_data_persistence_badge(state: PersistenceState) -> None:
         "</p>",
         unsafe_allow_html=True,
     )
+
+
+def render_main_persistence_banner(state: PersistenceState) -> None:
+    """Prominent storage status on the main canvas (not only in the sidebar expander)."""
+
+    if state.mode == PersistenceMode.CLOUD_DEGRADED:
+        st.error(state.message or "Cloud database is unreachable; using temporary local storage.")
+        return
+    if state.mode == PersistenceMode.LOCAL and is_streamlit_community_cloud():
+        st.warning(
+            "**Temporary session storage** — portfolio and research data on Streamlit Community Cloud "
+            "reset when the app restarts. Add `DATABASE_URL` (and `APP_PASSWORD`) in **Settings → Secrets** "
+            "to persist data, or download backups from **Import & backup**. "
+            "See **Storage & help** in the sidebar for steps."
+        )
 
 
 def render_sidebar_persistence_hint() -> None:

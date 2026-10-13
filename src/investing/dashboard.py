@@ -57,7 +57,7 @@ from .royal_theme import (
     render_wealth_hero,
 )
 from .cloud_persistence import PersistenceMode, sync_session_cloud_data
-from .cloud_persistence_ui import render_data_persistence_badge
+from .cloud_persistence_ui import render_data_persistence_badge, render_main_persistence_banner
 from .ui_research import render_database_backup_panel, render_run_research_controls
 from .wealth_insights import load_wealth_snapshot, plain_english_insights
 from .about_ui import render_about_section
@@ -149,7 +149,7 @@ def _run_dashboard() -> None:
             render_term_glossary()
         st.caption("For tracking and research. Not investment advice.")
 
-    _render_persistence_main_banner(persistence)
+    render_main_persistence_banner(persistence)
 
     if active_section in {"Dashboard", "Portfolio", "My mutual funds", "MF peers"} and using_demo_portfolio(
         personal_portfolio_path

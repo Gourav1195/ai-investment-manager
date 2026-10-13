@@ -51,7 +51,7 @@ def verify(url: str) -> None:
         if page.get_by_text("Evaluations").count() == 0:
             errors.append("run research page missing overview metrics after run")
 
-        click_sidebar_section(page, "Saved research")
+        click_sidebar_section(page, "Snapshots")
         page.wait_for_timeout(1500)
         if not page.get_by_text("Your research library").count():
             errors.append("saved research page missing library description")
@@ -67,8 +67,8 @@ def verify(url: str) -> None:
 
         click_sidebar_section(page, "Dashboard")
         page.wait_for_timeout(1500)
-        if not page.get_by_text("demo portfolio", exact=False).count():
-            errors.append("dashboard missing demo portfolio notice")
+        if not page.get_by_text("example data", exact=False).count():
+            errors.append("dashboard missing demo/example data banner")
 
         collapse.first.click()
         page.wait_for_timeout(700)

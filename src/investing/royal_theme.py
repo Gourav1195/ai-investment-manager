@@ -314,7 +314,7 @@ h1, h2, h3, .royal-title {
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-  margin: 1rem 0.7rem 0.35rem;
+  margin: 1rem 0.7rem 0.8rem;
   opacity: 0.85;
 }
 .st-key-royal_navigation[data-testid="stVerticalBlock"],

@@ -26,14 +26,6 @@ def _holding_labels(frame: pd.DataFrame) -> pd.Series:
     return pd.Series([""] * len(frame), index=frame.index, dtype="string")
 
 
-def _holding_labels(frame: pd.DataFrame) -> pd.Series:
-    if "scheme_name" in frame.columns:
-        return frame["scheme_name"].astype(str)
-    if "symbol" in frame.columns:
-        return frame["symbol"].astype(str)
-    return pd.Series(frame.index.astype(str), index=frame.index)
-
-
 def allocation_pie(holdings: pd.DataFrame) -> go.Figure | None:
     if holdings.empty or "current_value" not in holdings.columns:
         return None

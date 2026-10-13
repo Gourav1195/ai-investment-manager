@@ -152,6 +152,12 @@ def is_cloud_persistence_configured() -> bool:
     return bool(resolve_database_url())
 
 
+def is_streamlit_community_cloud() -> bool:
+    """True when running on Streamlit Community Cloud (not local ``streamlit run``)."""
+
+    return os.environ.get("STREAMLIT_RUNTIME_ENVIRONMENT", "").strip().lower() == "cloud"
+
+
 def _file_sha256(path: Path) -> str | None:
     if not path.is_file():
         return None

@@ -29,6 +29,9 @@ def capture(url: str, out_dir: Path) -> None:
         open_sidebar_if_collapsed(page)
         page.wait_for_timeout(800)
         page.screenshot(path=str(out_dir / "sidebar-expanded.png"), full_page=False)
+        sidebar = page.locator('section[data-testid="stSidebar"]')
+        if sidebar.count():
+            sidebar.screenshot(path=str(out_dir / "sidebar-nav-spacing.png"))
 
         # Collapse sidebar via header control if present.
         collapse = page.locator('[data-testid="stSidebarCollapseButton"]')
