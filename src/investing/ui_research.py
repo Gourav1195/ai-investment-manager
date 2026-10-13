@@ -193,10 +193,12 @@ def render_run_research_controls(
     *,
     key_prefix: str = "sidebar",
 ) -> bool:
-    st.markdown("**Run research from this page**")
+    st.markdown("**Run a new research batch**")
     st.caption(
-        "Builds research snapshots in your database so the main views fill in. "
-        "Uses a small stock list by default to stay within free hosting limits."
+        "Downloads prices, scores companies, and **saves snapshots** to your database. "
+        "Results appear on this page when the run finishes, and stay available under "
+        "**Saved research** for browsing and filtering. Uses a small stock list by default "
+        "to stay within free hosting limits."
     )
     choice = st.selectbox(
         "Stock list",

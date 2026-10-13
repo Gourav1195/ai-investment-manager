@@ -257,38 +257,78 @@ h1, h2, h3, .royal-title {
   color: var(--royal-cream);
 }
 
-/* Sidebar navigation uses the same spacing, colour and radius tokens as cards. */
-[data-testid="stSidebarUserContent"] { padding: 1.25rem 1rem; }
-.royal-sidebar-brand { padding: 0 0.65rem 0.6rem; }
+/* Sidebar: brand title shares the header row with the collapse control. */
+[data-testid="stSidebarContent"] { position: relative; }
+[data-testid="stSidebarHeader"] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 6;
+  background: transparent;
+  pointer-events: none;
+  padding: 0.4rem 0.55rem 0;
+}
+[data-testid="stSidebarCollapseButton"] { pointer-events: auto; }
+[data-testid="stSidebarUserContent"] {
+  padding: 0.2rem 0.85rem 1.35rem;
+}
+.royal-sidebar-brand {
+  display: flex;
+  align-items: center;
+  min-height: 2.85rem;
+  padding: 0.5rem 2.85rem 0.7rem 0.7rem;
+  margin: 0 0 0.45rem;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.22);
+}
+.royal-sidebar-brand-text { min-width: 0; flex: 1; }
 .royal-sidebar-brand strong {
+  display: block;
   color: var(--royal-cream);
-  font-size: 1.15rem;
-  letter-spacing: 0.01em;
+  font-family: "Playfair Display", "Cinzel", Georgia, serif;
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
 }
 .royal-sidebar-brand p {
   color: var(--royal-muted);
-  font-size: 0.85rem;
-  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  margin: 0.12rem 0 0;
+  line-height: 1.3;
 }
+[data-testid="stSidebar"][aria-expanded="false"] .royal-sidebar-brand-text {
+  display: none;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 10px;
+  background: rgba(11, 16, 38, 0.35);
+  margin-bottom: 0.45rem;
+}
+[data-testid="stSidebar"] hr { border-color: rgba(212, 175, 55, 0.18); margin: 0.85rem 0; }
+
 .royal-nav-group {
-  color: var(--royal-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
+  color: var(--royal-gold-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  margin: 0.8rem 0.65rem 0.2rem;
+  margin: 1rem 0.7rem 0.35rem;
+  opacity: 0.85;
 }
 .st-key-royal_navigation[data-testid="stVerticalBlock"],
-.st-key-royal_navigation [data-testid="stVerticalBlock"] { gap: 0.2rem; }
+.st-key-royal_navigation [data-testid="stVerticalBlock"] { gap: 0.28rem; }
 .st-key-royal_navigation button[data-testid^="stBaseButton"] {
   justify-content: flex-start;
-  min-height: 2.5rem;
-  padding: 0.45rem 0.65rem;
+  min-height: 2.55rem;
+  padding: 0.5rem 0.7rem;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--royal-muted);
   font-weight: 500;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
 }
 .st-key-royal_navigation button[data-testid^="stBaseButton"] > div {
   justify-content: flex-start;
@@ -298,14 +338,15 @@ h1, h2, h3, .royal-title {
   text-align: left;
 }
 .st-key-royal_navigation button[data-testid^="stBaseButton"]:hover {
-  background: rgba(184, 178, 200, 0.08);
+  background: rgba(184, 178, 200, 0.1);
   color: var(--royal-cream);
-  border-color: rgba(184, 178, 200, 0.15);
+  border-color: rgba(184, 178, 200, 0.2);
+  transform: translateX(2px);
 }
 .st-key-royal_navigation button[data-testid^="stBaseButton"][kind="primary"] {
-  background: rgba(212, 175, 55, 0.13);
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.16) 0%, rgba(212, 175, 55, 0.06) 100%);
   color: var(--royal-gold-soft);
-  border-color: rgba(212, 175, 55, 0.3);
+  border-color: rgba(212, 175, 55, 0.35);
   box-shadow: inset 3px 0 0 var(--royal-gold);
 }
 .st-key-royal_navigation button[data-testid^="stBaseButton"]:focus-visible {

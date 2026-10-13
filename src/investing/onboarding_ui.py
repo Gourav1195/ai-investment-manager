@@ -22,7 +22,7 @@ def render_portfolio_empty_state(portfolio_path: Path, prefs: AppPreferences) ->
     st.markdown(
         "### Add your Zerodha holdings\n"
         "Download exports from **[Zerodha Console](https://console.zerodha.com/)** "
-        "(Reports → Holdings) and upload below, or try the demo."
+        "(Reports → Holdings) and upload below."
     )
     if GUIDE_SVG.exists():
         try:
@@ -36,7 +36,8 @@ def render_portfolio_empty_state(portfolio_path: Path, prefs: AppPreferences) ->
     render_empty_state(
         "📥",
         "No holdings yet",
-        "Upload a Console export or open **Dashboard** to connect Zerodha.",
+        "Upload a Console export above, or open **Dashboard** to connect Zerodha. "
+        "Until then, the app uses the built-in demo portfolio.",
     )
 
 
