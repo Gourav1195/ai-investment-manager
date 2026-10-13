@@ -73,9 +73,12 @@ def postgres_url() -> Iterator[str]:
 
     ci_url = os.environ.get("CI_POSTGRES_URL", "").strip()
     if ci_url:
-        if not _wait_for_postgres(ci_url):
+        from src.investing.cloud_persistence import normalize_database_url
+
+        normalized = normalize_database_url(ci_url)
+        if not _wait_for_postgres(normalized):
             pytest.skip("CI Postgres service not ready")
-        yield ci_url
+        yield normalized
         return
 
     try:

@@ -172,7 +172,7 @@ def _connect_engine(url: str):
     from sqlalchemy import create_engine
 
     return create_engine(
-        url,
+        normalize_database_url(url),
         pool_pre_ping=True,
         connect_args={"connect_timeout": 15},
     )
