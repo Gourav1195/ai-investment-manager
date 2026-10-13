@@ -12,6 +12,7 @@
 > For a minimal India research + portfolio install use `pip install -r requirements.txt`
 > (same as `requirements-core.txt`). Optional trading stack: `requirements-trading.txt`.
 > **Streamlit Cloud:** main file `streamlit_app.py` — see [`docs/streamlit_cloud.md`](docs/streamlit_cloud.md).
+> **Maintainers:** architecture notes for portfolio, cloud DB, auth, research, and CI — [`docs/architecture/README.md`](docs/architecture/README.md).
 > Project decisions, completed work, verification, and next milestones are maintained in
 > [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
 

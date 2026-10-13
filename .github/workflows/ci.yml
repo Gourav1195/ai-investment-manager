@@ -8,6 +8,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      CI_POSTGRES_URL: postgresql://postgres:testpass@localhost:5432/investing
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: investing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d investing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 

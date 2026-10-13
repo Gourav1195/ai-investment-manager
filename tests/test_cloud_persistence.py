@@ -5,6 +5,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -50,9 +51,32 @@ def test_bad_database_url_degrades_gracefully(tmp_path: Path, monkeypatch) -> No
     assert "bad:bad@" not in (state.message or "")
 
 
+def _wait_for_postgres(url: str, *, attempts: int = 45) -> bool:
+    from sqlalchemy import create_engine, text
+
+    from src.investing.cloud_persistence import normalize_database_url
+
+    engine = create_engine(normalize_database_url(url), pool_pre_ping=True)
+    for _ in range(attempts):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return True
+        except Exception:
+            time.sleep(1)
+    return False
+
+
 @pytest.fixture(scope="module")
-def postgres_url() -> str:
-    """Start a throwaway Postgres container when Docker is available."""
+def postgres_url() -> Iterator[str]:
+    """Postgres for integration tests: CI service URL or local Docker."""
+
+    ci_url = os.environ.get("CI_POSTGRES_URL", "").strip()
+    if ci_url:
+        if not _wait_for_postgres(ci_url):
+            pytest.skip("CI Postgres service not ready")
+        yield ci_url
+        return
 
     try:
         subprocess.run(["docker", "info"], capture_output=True, check=True, timeout=30)
@@ -80,19 +104,9 @@ def postgres_url() -> str:
         capture_output=True,
     )
     url = "postgresql://postgres:testpass@127.0.0.1:55432/investing"
-    for _ in range(30):
-        try:
-            from sqlalchemy import create_engine, text
-
-            engine = create_engine(url)
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            break
-        except Exception:
-            time.sleep(1)
-    else:
+    if not _wait_for_postgres(url):
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
-        pytest.fail("Postgres container did not become ready")
+        pytest.skip("Postgres container did not become ready")
     yield url
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
