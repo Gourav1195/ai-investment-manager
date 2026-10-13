@@ -122,10 +122,14 @@ def _run_dashboard() -> None:
     maybe_auto_load_demo_for_qa(portfolio_path, prefs)
 
     personal_portfolio_path = portfolio_path
-    from .portfolio_start import render_start_choices, render_start_setup, selected_portfolio_path
+    from .portfolio_start import (
+        render_demo_data_banner,
+        render_get_started_actions,
+        render_start_setup,
+        selected_portfolio_path,
+        using_demo_portfolio,
+    )
 
-    if active_section == "Dashboard":
-        render_start_choices(personal_portfolio_path)
     portfolio_path = selected_portfolio_path(personal_portfolio_path, work_dir)
 
     store = ResearchStore(database_path) if database_path.exists() else None
@@ -141,14 +145,15 @@ def _run_dashboard() -> None:
             render_term_glossary()
         st.caption("For tracking and research. Not investment advice.")
 
-    from .onboarding_ui import portfolio_contains_demo_data
-
-    if active_section in {"Dashboard", "Portfolio", "My mutual funds", "MF peers"} and portfolio_contains_demo_data(portfolio_path):
-        st.info("This portfolio includes demo holdings and illustrative prices. Import your own stock and mutual fund files to replace them.")
+    if active_section in {"Dashboard", "Portfolio", "My mutual funds", "MF peers"} and using_demo_portfolio(
+        personal_portfolio_path
+    ):
+        render_demo_data_banner()
 
     if active_section == "Dashboard":
         render_welcome_header(name.strip())
-        if st.session_state.get("portfolio_source") == "My portfolio":
+        render_get_started_actions()
+        if st.session_state.get("home_setup"):
             render_start_setup(personal_portfolio_path)
         notice = st.session_state.pop("portfolio_notice", None)
         if notice:

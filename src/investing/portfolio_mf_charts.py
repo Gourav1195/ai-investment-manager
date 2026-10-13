@@ -16,11 +16,19 @@ from .mf_rankings import _category_average_nav, normalized_nav_frame
 from .portfolio_store import PortfolioStore
 
 
+def _holding_labels(frame: pd.DataFrame) -> pd.Series:
+    if "scheme_name" in frame.columns:
+        return frame["scheme_name"].astype(str)
+    if "symbol" in frame.columns:
+        return frame["symbol"].astype(str)
+    return pd.Series(frame.index.astype(str), index=frame.index)
+
+
 def allocation_pie(holdings: pd.DataFrame) -> go.Figure | None:
     if holdings.empty or "current_value" not in holdings.columns:
         return None
     frame = holdings.copy()
-    frame["label"] = frame.get("symbol", frame.get("scheme_name", "")).astype(str)
+    frame["label"] = _holding_labels(frame)
     frame = frame.loc[frame["current_value"].fillna(0) > 0]
     if frame.empty:
         return None
@@ -41,7 +49,7 @@ def pnl_bar(holdings: pd.DataFrame) -> go.Figure | None:
     if pnl_col is None:
         return None
     frame = holdings.copy()
-    frame["label"] = frame.get("scheme_name", frame.get("symbol", "")).astype(str)
+    frame["label"] = _holding_labels(frame)
     frame = frame.sort_values(pnl_col)
     fig = px.bar(
         frame,

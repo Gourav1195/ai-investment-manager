@@ -4,7 +4,7 @@ You can use this app from your browser. You do not need Python, database setting
 
 ## Try it first
 
-1. Open Dashboard. **Demo portfolio** is selected automatically if you have not added real holdings. These are sample holdings with illustrative prices, not your investments or live quotes.
+1. Open **Dashboard**. If you have not uploaded files or connected Zerodha, the app shows **example data** automatically (with a banner). Add real holdings via **Import & backup** or the upload buttons on Dashboard.
 2. Open **Portfolio** to see stocks, mutual funds, invested amounts and profit or loss.
 3. Open **My mutual funds** for fund charts, or **Compare funds** to compare funds in the same category.
 

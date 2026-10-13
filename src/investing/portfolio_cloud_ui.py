@@ -28,15 +28,6 @@ def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False
 
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if not compact:
-        from .portfolio_start import use_demo_portfolio
-
-        st.button(
-            "View demo portfolio", width="stretch", key="portfolio_load_examples",
-            on_click=use_demo_portfolio,
-            help="The demo is separate and does not replace your holdings.",
-        )
-
     st.markdown("**Upload from Zerodha Console**")
     st.caption("Each upload replaces the previous holdings or trade history of that type. Download a backup first to keep a copy.")
     if compact:
@@ -117,7 +108,6 @@ def _import_upload(
             count = import_mf_holdings_file(store, temp_path)
         st.success(f"Added {count} rows from {uploaded.name}.")
         mark_processed(uploaded, key, portfolio_path)
-        st.session_state["portfolio_source"] = "My portfolio"
         st.session_state.pop("home_setup", None)
         st.rerun()
     except Exception as error:  # noqa: BLE001
