@@ -45,6 +45,85 @@ class PersistenceState:
     message: str | None = None
 
 
+def _coerce_secret_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("url", "connection_string", "DATABASE_URL", "database_url"):
+            nested = value.get(key)
+            if nested:
+                return _coerce_secret_value(nested)
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if (text.startswith('"') and text.endswith('"')) or (
+        text.startswith("'") and text.endswith("'")
+    ):
+        text = text[1:-1].strip()
+    return text or None
+
+
+def normalize_database_url(url: str) -> str:
+    """Normalize Postgres URLs for SQLAlchemy + psycopg2 on Streamlit Cloud."""
+
+    text = url.strip()
+    lowered = text.lower()
+    if lowered.startswith("postgres://"):
+        text = "postgresql+psycopg2://" + text[len("postgres://") :]
+    elif lowered.startswith("postgresql://"):
+        text = "postgresql+psycopg2://" + text[len("postgresql://") :]
+    elif lowered.startswith("postgresql+psycopg2://"):
+        pass
+    elif lowered.startswith("postgresql+psycopg://"):
+        text = "postgresql+psycopg2://" + text[len("postgresql+psycopg://") :]
+
+    host = ""
+    try:
+        from sqlalchemy.engine.url import make_url
+
+        parsed = make_url(text)
+        host = (parsed.host or "").lower()
+    except Exception:
+        host = ""
+
+    if host and host not in {"localhost", "127.0.0.1"} and "sslmode=" not in text.lower():
+        text = f"{text}&sslmode=require" if "?" in text else f"{text}?sslmode=require"
+    return text
+
+
+def _safe_database_target(url: str) -> str:
+    try:
+        from sqlalchemy.engine.url import make_url
+
+        parsed = make_url(url)
+        host = parsed.host or "unknown-host"
+        database = parsed.database or "unknown-db"
+        driver = parsed.drivername or "postgresql"
+        port = f":{parsed.port}" if parsed.port else ""
+        return f"{driver}://{host}{port}/{database}"
+    except Exception:
+        return "configured Postgres (could not parse DATABASE_URL)"
+
+
+def format_cloud_error(action: str, exc: Exception, database_url: str) -> str:
+    detail = f"{type(exc).__name__}: {exc}"
+    target = _safe_database_target(database_url)
+    logger.error(
+        "Cloud database %s failed (%s): %s",
+        action,
+        target,
+        detail,
+        exc_info=True,
+    )
+    return (
+        f"Could not {action} your cloud database. Using temporary local storage until it is fixed. "
+        f"Details: {detail} — target {_safe_database_target(database_url)}. "
+        "Check Streamlit secrets: DATABASE_URL must be a Postgres URI "
+        "(postgresql://… or postgres://… from Neon/Supabase, usually with ?sslmode=require)."
+    )
+
+
 def resolve_database_url() -> str | None:
     """Read ``DATABASE_URL`` from Streamlit secrets or environment (never logged)."""
 
@@ -52,14 +131,21 @@ def resolve_database_url() -> str | None:
     try:
         import streamlit as st
 
-        value = st.secrets.get("DATABASE_URL")
+        if hasattr(st, "secrets"):
+            if "DATABASE_URL" in st.secrets:
+                value = st.secrets["DATABASE_URL"]
+            else:
+                value = st.secrets.get("DATABASE_URL")
+            if not value and "postgres" in st.secrets:
+                value = st.secrets["postgres"]
     except Exception:
         value = None
-    if value:
-        text = str(value).strip()
-        return text or None
-    env = os.environ.get("DATABASE_URL", "").strip()
-    return env or None
+    text = _coerce_secret_value(value)
+    if not text:
+        text = os.environ.get("DATABASE_URL", "").strip() or None
+    if not text:
+        return None
+    return normalize_database_url(text)
 
 
 def is_cloud_persistence_configured() -> bool:
@@ -123,11 +209,10 @@ def pull_cloud_blobs(work_dir: Path, *, url: str | None = None) -> PersistenceSt
         engine = _connect_engine(database_url)
         _ensure_schema(engine)
         remote = _remote_blobs(engine)
-    except Exception:
-        logger.exception("Cloud database pull failed")
+    except Exception as exc:
         return PersistenceState(
             PersistenceMode.CLOUD_DEGRADED,
-            "Could not reach your cloud database. Using temporary local storage until it is fixed.",
+            format_cloud_error("reach", exc, database_url),
         )
 
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -162,11 +247,10 @@ def push_cloud_blobs(work_dir: Path, *, url: str | None = None) -> PersistenceSt
     try:
         engine = _connect_engine(database_url)
         _ensure_schema(engine)
-    except Exception:
-        logger.exception("Cloud database push failed")
+    except Exception as exc:
         return PersistenceState(
             PersistenceMode.CLOUD_DEGRADED,
-            "Could not save to your cloud database. Download a backup from Import & backup.",
+            format_cloud_error("save to", exc, database_url),
         )
 
     from sqlalchemy import text
@@ -193,11 +277,10 @@ def push_cloud_blobs(work_dir: Path, *, url: str | None = None) -> PersistenceSt
                     ),
                     {"name": blob_name, "payload": payload, "sha256": sha},
                 )
-    except Exception:
-        logger.exception("Cloud database push failed")
+    except Exception as exc:
         return PersistenceState(
             PersistenceMode.CLOUD_DEGRADED,
-            "Could not save to your cloud database. Download a backup from Import & backup.",
+            format_cloud_error("save to", exc, database_url),
         )
 
     return PersistenceState(PersistenceMode.CLOUD, None)

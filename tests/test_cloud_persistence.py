@@ -10,6 +10,7 @@ import pytest
 
 from src.investing.cloud_persistence import (
     PersistenceMode,
+    normalize_database_url,
     pull_cloud_blobs,
     push_cloud_blobs,
     resolve_database_url,
@@ -21,7 +22,17 @@ def test_resolve_database_url_from_environment(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     assert resolve_database_url() is None
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
-    assert resolve_database_url() == "postgresql://u:p@localhost/db"
+    assert resolve_database_url() == "postgresql+psycopg2://u:p@localhost/db"
+
+
+def test_normalize_database_url_postgres_scheme_and_ssl() -> None:
+    assert normalize_database_url("postgres://u:p@ep-neon.example/neondb").startswith(
+        "postgresql+psycopg2://"
+    )
+    remote = normalize_database_url("postgresql://u:p@ep-neon.example/neondb")
+    assert "sslmode=require" in remote
+    local = normalize_database_url("postgresql://u:p@localhost/db")
+    assert "sslmode=" not in local
 
 
 def test_pull_push_without_url_returns_local(tmp_path: Path, monkeypatch) -> None:
@@ -35,6 +46,8 @@ def test_bad_database_url_degrades_gracefully(tmp_path: Path, monkeypatch) -> No
     state = pull_cloud_blobs(tmp_path)
     assert state.mode == PersistenceMode.CLOUD_DEGRADED
     assert state.message
+    assert "Details:" in state.message
+    assert "bad:bad@" not in (state.message or "")
 
 
 @pytest.fixture(scope="module")

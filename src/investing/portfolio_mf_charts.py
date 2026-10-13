@@ -15,6 +15,16 @@ from .mf_peer_comparison import PeerComparisonReport
 from .mf_rankings import _category_average_nav, normalized_nav_frame
 from .portfolio_store import PortfolioStore
 
+_LABEL_COLUMNS = ("name", "scheme_name", "symbol", "identifier")
+
+
+def _holding_labels(frame: pd.DataFrame) -> pd.Series:
+    """Build chart labels from whichever name column the holdings frame provides."""
+    for column in _LABEL_COLUMNS:
+        if column in frame.columns:
+            return frame[column].fillna("").astype(str)
+    return pd.Series([""] * len(frame), index=frame.index, dtype="string")
+
 
 def _holding_labels(frame: pd.DataFrame) -> pd.Series:
     if "scheme_name" in frame.columns:

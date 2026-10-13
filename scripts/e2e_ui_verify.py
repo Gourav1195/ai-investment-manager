@@ -56,6 +56,15 @@ def verify(url: str) -> None:
         if not page.get_by_text("Your research library").count():
             errors.append("saved research page missing library description")
 
+        click_sidebar_section(page, "My mutual funds")
+        page.wait_for_timeout(2500)
+        if page.get_by_text("Something went wrong", exact=False).count():
+            errors.append("my mutual funds page crashed")
+        if page.get_by_text("mutual fund charts", exact=False).count() == 0 and page.get_by_text(
+            "No mutual fund holdings", exact=False
+        ).count() == 0:
+            errors.append("my mutual funds page did not render expected content")
+
         click_sidebar_section(page, "Dashboard")
         page.wait_for_timeout(1500)
         if not page.get_by_text("demo portfolio", exact=False).count():
