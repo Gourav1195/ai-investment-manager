@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Click every top-level tab on desktop and mobile; capture screenshots."""
+"""Click every sidebar section on desktop and mobile; capture screenshots."""
 
 from __future__ import annotations
 
@@ -14,15 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = Path(os.environ.get("QA_SCREENSHOT_DIR", "/opt/cursor/artifacts/screenshots"))
 PORT = int(os.environ.get("QA_STREAMLIT_PORT", "8523"))
 
-TOP_TABS = (
-    "Wealth at a glance",
-    "Portfolio",
-    "My Mutual Funds",
-    "Top Mutual Funds",
-    "Snapshots",
-    "Profile review",
-    "Orchestration runs",
-)
+sys.path.insert(0, str(ROOT))
+from src.investing.sidebar_nav import SIDEBAR_SECTIONS
+
+SECTIONS = SIDEBAR_SECTIONS
 
 
 def _start(work_dir: Path) -> subprocess.Popen[bytes]:
@@ -63,16 +58,17 @@ def _healthy(base: str, process: subprocess.Popen[bytes]) -> None:
     raise RuntimeError("Streamlit not healthy")
 
 
-def _visit_tabs(page, prefix: str) -> None:
+def _visit_sections(page, prefix: str) -> None:
     from playwright.sync_api import expect
 
-    for label in TOP_TABS:
-        tab = page.get_by_role("tab", name=label)
-        expect(tab).to_be_visible(timeout=30_000)
-        tab.click()
-        page.wait_for_timeout(2000)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from qa_streamlit_nav import click_sidebar_section
+
+    for label in SECTIONS:
+        click_sidebar_section(page, label)
+        page.wait_for_timeout(800)
         safe = label.lower().replace(" ", "-")
-        page.screenshot(path=str(ARTIFACTS / f"{prefix}-tab-{safe}.png"), full_page=True)
+        page.screenshot(path=str(ARTIFACTS / f"{prefix}-nav-{safe}.png"), full_page=True)
     expect(page.locator('[data-testid="stException"]')).to_have_count(0)
 
 
@@ -90,13 +86,13 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Wealth at a glance", timeout=120_000)
-            _visit_tabs(desktop, "pro-tabs-desktop")
+            desktop.wait_for_selector("text=Menu", timeout=120_000)
+            _visit_sections(desktop, "pro-tabs-desktop")
 
             mobile = browser.new_page(viewport={"width": 390, "height": 844})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            mobile.wait_for_selector("text=Wealth at a glance", timeout=120_000)
-            _visit_tabs(mobile, "pro-tabs-mobile")
+            mobile.wait_for_selector("text=Menu", timeout=120_000)
+            _visit_sections(mobile, "pro-tabs-mobile")
 
             browser.close()
     finally:

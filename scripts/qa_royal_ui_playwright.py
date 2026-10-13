@@ -55,14 +55,18 @@ def _wait_healthy(base: str, process: subprocess.Popen[bytes]) -> None:
     raise RuntimeError("Streamlit did not become healthy")
 
 
-def _capture_tabs(page, prefix: str) -> None:
-    from src.investing.dashboard import TOP_LEVEL_TABS
+sys.path.insert(0, str(ROOT / "scripts"))
+from qa_streamlit_nav import click_sidebar_section as _nav_section  # noqa: E402
 
-    for label in TOP_LEVEL_TABS:
-        page.get_by_role("tab", name=label).click()
+
+def _capture_sections(page, prefix: str) -> None:
+    from src.investing.sidebar_nav import SIDEBAR_SECTIONS
+
+    for label in SIDEBAR_SECTIONS:
+        _nav_section(page, label)
         page.wait_for_timeout(1500)
         safe = label.lower().replace(" ", "-")
-        page.screenshot(path=str(ARTIFACTS / f"{prefix}-tab-{safe}.png"), full_page=True)
+        page.screenshot(path=str(ARTIFACTS / f"{prefix}-nav-{safe}.png"), full_page=True)
 
 
 def main() -> int:
@@ -79,15 +83,15 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            desktop.wait_for_selector("text=Menu", timeout=120_000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-before-desktop-home.png"), full_page=True)
-            desktop.get_by_role("button", name="About this app").first.click()
+            _nav_section(desktop, "About")
             desktop.wait_for_timeout(1500)
             desktop.wait_for_selector("text=Privacy & safety", timeout=30_000)
-            desktop.screenshot(path=str(ARTIFACTS / "royal-about-dialog-desktop.png"), full_page=True)
-            _capture_tabs(desktop, "royal-before-desktop")
+            desktop.screenshot(path=str(ARTIFACTS / "royal-about-page-desktop.png"), full_page=True)
+            _capture_sections(desktop, "royal-before-desktop")
 
-            desktop.get_by_role("tab", name="Portfolio").click()
+            _nav_section(desktop, "Portfolio")
             desktop.get_by_role(
                 "button",
                 name="Try demo portfolio first (no files needed)",
@@ -95,17 +99,17 @@ def main() -> int:
             desktop.wait_for_timeout(5000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-after-desktop-portfolio.png"), full_page=True)
 
-            desktop.get_by_role("tab", name="Snapshots").click()
+            _nav_section(desktop, "Snapshots")
             desktop.get_by_role("button", name="Run research").first.click()
             desktop.wait_for_timeout(15000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-after-desktop-research.png"), full_page=True)
-            _capture_tabs(desktop, "royal-after-desktop")
+            _capture_sections(desktop, "royal-after-desktop")
 
             mobile = browser.new_page(viewport={"width": 390, "height": 844})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            mobile.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            mobile.wait_for_selector("text=Menu", timeout=120_000)
             mobile.screenshot(path=str(ARTIFACTS / "royal-after-mobile-home.png"), full_page=True)
-            mobile.get_by_role("tab", name="My Mutual Funds").click()
+            _nav_section(mobile, "My mutual funds")
             mobile.wait_for_timeout(3000)
             mobile.screenshot(path=str(ARTIFACTS / "royal-after-mobile-mf.png"), full_page=True)
 

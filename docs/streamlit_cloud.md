@@ -24,16 +24,31 @@ That file is intentionally **lightweight** (pandas, streamlit, yfinance, openpyx
 Heavy FinRL / trading packages are in `requirements-trading.txt`.  
 Dev tools are in `requirements-dev.txt`.
 
-## Secrets (optional password)
+## Secrets
 
-In the app → **Settings → Secrets**, add:
+### Optional password (public demo)
 
 ```toml
 APP_PASSWORD = "your-private-password"
 ```
 
 When `APP_PASSWORD` is set, users must enter it before the dashboard loads.  
-Leave unset for a public demo.
+Check **Remember me for 30 days** to stay signed in (signed cookie + optional URL token — never stores the plain password).  
+Optional `APP_AUTH_SIGNING_KEY` in secrets strengthens cookie signing (recommended for production).  
+Leave `APP_PASSWORD` unset for a public demo.
+
+### Optional cloud database (data survives restarts)
+
+On Community Cloud, local disk is ephemeral. To keep portfolio, research, profile, and UI
+preferences across reboots, add a free Postgres URL from Neon or Supabase:
+
+```toml
+DATABASE_URL = "postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
+APP_PASSWORD = "required-when-using-cloud-database"
+```
+
+Step-by-step guide: [`docs/cloud_database.md`](cloud_database.md). The app shows a banner when
+cloud save is active.
 
 Optional paths (usually not needed on Cloud):
 
@@ -47,8 +62,9 @@ Everything runs in the browser—no command line required.
 
 1. Open the **Snapshots** tab (or the sidebar) and click **Run research** to build research
    snapshots on a small stock list (demo-friendly on the free tier).
-2. Use **Save or restore your data** in the sidebar to download `research.db` / `portfolio.db`
-   backups; upload them in a later session on Streamlit Cloud.
+2. Either set **`DATABASE_URL`** (see [`cloud_database.md`](cloud_database.md)) so data syncs
+   automatically, or use **Save or restore your data** in the sidebar to download/upload
+   `research.db` / `portfolio.db` backups between sessions.
 3. **Top mutual funds** — refresh the AMFI list once, pick a category, then **Load rankings**.
 4. **Portfolio** — follow **Step 1 of 2** (Console download guide + uploads) or **Try demo portfolio**.
 
@@ -58,7 +74,8 @@ Charts use Plotly; mutual fund data comes from AMFI + mfapi.in with local cachin
 
 The dashboard uses a navy / gold theme (`.streamlit/config.toml` plus in-app CSS). Your name,
 **Your wealth at a glance**, and mutual-fund insights appear at the top. Primary tabs are
-**Wealth at a glance**, **Portfolio**, **My Mutual Funds**, **Top Mutual Funds**, **Snapshots**, **Profile review**, and **Orchestration runs** — each is a top-level tab. Database paths and **Run research** sit under **Advanced** in the sidebar.
+Use the **sidebar menu** for every section (wealth, portfolio, mutual funds, research, About).
+**Run research** and **Backup / restore** are always visible in the sidebar; only database file paths sit under **Advanced**.
 
 ## Local check (simulates Cloud cwd)
 

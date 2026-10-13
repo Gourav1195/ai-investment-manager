@@ -219,6 +219,54 @@ h1, h2, h3, .royal-title {
   margin-bottom: 0.75rem;
 }
 
+.royal-persistence-badge {
+  font-size: 0.9rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.royal-persistence-cloud {
+  background: rgba(61, 214, 140, 0.12);
+  color: var(--royal-cream);
+}
+
+.royal-persistence-temp {
+  background: rgba(184, 178, 200, 0.12);
+  color: var(--royal-muted);
+}
+
+.royal-persistence-warn {
+  background: rgba(255, 107, 122, 0.12);
+  color: var(--royal-cream);
+}
+
+.royal-sidebar-nav-title {
+  font-family: "Playfair Display", serif;
+  color: var(--royal-gold-soft);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem 0;
+}
+
+.royal-sidebar-name input {
+  font-size: 0.9rem !important;
+  padding: 0.35rem 0.5rem !important;
+  min-height: 2rem !important;
+}
+
+section[data-testid="stSidebar"] div[data-testid="stRadio"] {
+  max-height: 15rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label p {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
   flex-wrap: nowrap;
   overflow-x: auto;

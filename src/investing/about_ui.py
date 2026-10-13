@@ -23,8 +23,21 @@ def render_about_button(*, key: str = "about_app") -> None:
         about_dialog()
 
 
+def render_about_section() -> None:
+    """Full About page (sidebar navigation)."""
+    st.markdown(
+        '<h3 class="royal-section-title">About your wealth dashboard</h3>',
+        unsafe_allow_html=True,
+    )
+    _render_about_body()
+
+
 @st.dialog("About your wealth dashboard", width="large")
 def about_dialog() -> None:
+    _render_about_body()
+
+
+def _render_about_body() -> None:
     st.markdown(
         "This app helps you **see** your Zerodha stocks and mutual funds in one place — "
         "with plain-English summaries, charts, and comparisons. "
@@ -37,10 +50,14 @@ def about_dialog() -> None:
     st.markdown("### Privacy & safety")
     st.markdown(
         """
-- **Your files stay in this session** — uploads are saved in a database on the machine running the app. On Streamlit Cloud that storage is temporary unless you use **download backup** in Advanced.
-- **Read-only** — we only read Console exports and public market data. **We never place orders** or log in to your Zerodha account.
-- **Public data sources** — mutual fund data from [AMFI](https://www.amfiindia.com/) and [mfapi.in](https://mfapi.in/); share prices from Yahoo Finance (`yfinance`).
-- **Not investment advice** — for tracking and learning about your own portfolio only. Speak to a qualified adviser before investing.
+- **Your data** — uploads are saved in a local database on the app server. On Streamlit Cloud,
+  set **DATABASE_URL** in secrets for cloud saving, or use **Backup / restore** in the sidebar.
+- **Read-only** — we only read Console exports and public market data. **We never place orders**
+  or log in to your Zerodha account.
+- **Public data sources** — mutual fund data from [AMFI](https://www.amfiindia.com/) and
+  [mfapi.in](https://mfapi.in/); share prices from Yahoo Finance (`yfinance`).
+- **Not investment advice** — for tracking and learning about your own portfolio only. Speak to a
+  qualified adviser before investing.
         """
     )
 
