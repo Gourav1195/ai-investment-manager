@@ -224,6 +224,16 @@ h1, h2, h3, .royal-title {
   margin-bottom: 0.75rem;
 }
 
+.royal-demo-banner {
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: var(--royal-cream);
+  font-size: 0.92rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+
 .royal-persistence-badge {
   font-size: 0.9rem;
   padding: 0.5rem 0.75rem;
