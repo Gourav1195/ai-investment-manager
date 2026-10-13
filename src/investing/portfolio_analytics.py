@@ -44,6 +44,9 @@ class PortfolioSummary:
     totals: dict[str, float | None]
     absolute_return_pct: float | None
     xirr: float | None
+    xirr_note: str | None = None
+    mf_fund_xirr: pd.DataFrame | None = None
+    mf_sips: pd.DataFrame | None = None
 
 
 def build_portfolio_summary(
@@ -133,11 +136,15 @@ def build_portfolio_summary(
         absolute_return_pct = (total_current - total_invested) / total_invested
 
     trades = store.list_equity_trades()
-    xirr = compute_portfolio_xirr(
+    mf_txns = store.list_mf_transactions()
+    xirr, xirr_note = compute_portfolio_xirr(
         trades,
+        mf_transactions=mf_txns,
         equity_terminal_value=_sum_column(equity_frame, "current_value"),
         mf_terminal_value=_sum_column(mf_frame, "current_value"),
     )
+    mf_fund_xirr = build_mf_fund_xirr_table(mf_txns, mf_frame)
+    mf_sips = list_mf_sip_transactions(mf_txns)
 
     totals = {
         "invested": total_invested,
@@ -154,25 +161,53 @@ def build_portfolio_summary(
         totals=totals,
         absolute_return_pct=absolute_return_pct,
         xirr=xirr,
+        xirr_note=xirr_note,
+        mf_fund_xirr=mf_fund_xirr,
+        mf_sips=mf_sips,
     )
+
+
+def _mf_txn_cashflow(txn_type: str, amount: float) -> float:
+    kind = str(txn_type).lower()
+    if kind in {"redemption", "sell", "dividend"}:
+        return abs(amount)
+    return -abs(amount)
 
 
 def compute_portfolio_xirr(
     trades: pd.DataFrame,
     *,
+    mf_transactions: pd.DataFrame | None = None,
     equity_terminal_value: float | None,
     mf_terminal_value: float | None,
     as_of: date | None = None,
-) -> float | None:
-    """Compute XIRR from tradebook cash flows plus terminal portfolio value."""
+) -> tuple[float | None, str | None]:
+    """Compute XIRR from equity trades, optional MF transactions, and terminal values."""
 
     as_of = as_of or date.today()
     flows: list[tuple[date, float]] = []
+    note: str | None = None
     if not trades.empty:
         for record in trades.to_dict(orient="records"):
             amount = float(record["quantity"]) * float(record["price"])
             signed = -amount if record["side"] == "buy" else amount
             flows.append((date.fromisoformat(str(record["trade_date"])), signed))
+
+    mf_txns = mf_transactions if mf_transactions is not None else pd.DataFrame()
+    if not mf_txns.empty:
+        for record in mf_txns.to_dict(orient="records"):
+            flows.append(
+                (
+                    date.fromisoformat(str(record["txn_date"])),
+                    _mf_txn_cashflow(str(record["txn_type"]), float(record["amount"])),
+                )
+            )
+    elif mf_terminal_value is not None and mf_terminal_value > 0:
+        note = (
+            "Mutual funds are excluded from portfolio XIRR until you import "
+            "MF transaction history (Zerodha Coin export) in Import & backup."
+        )
+        mf_terminal_value = None
 
     terminal = 0.0
     if equity_terminal_value is not None:
@@ -183,8 +218,58 @@ def compute_portfolio_xirr(
         flows.append((as_of, terminal))
 
     if len(flows) < 2:
-        return None
-    return xirr(flows)
+        return None, note
+    return xirr(flows), note
+
+
+def list_mf_sip_transactions(mf_transactions: pd.DataFrame) -> pd.DataFrame:
+    if mf_transactions.empty:
+        return mf_transactions
+    mask = mf_transactions["txn_type"].astype(str).str.lower().eq("sip")
+    return mf_transactions.loc[mask].reset_index(drop=True)
+
+
+def build_mf_fund_xirr_table(
+    mf_transactions: pd.DataFrame,
+    mf_holdings: pd.DataFrame,
+    *,
+    as_of: date | None = None,
+) -> pd.DataFrame:
+    if mf_transactions.empty or mf_holdings.empty:
+        return pd.DataFrame()
+    as_of = as_of or date.today()
+    rows: list[dict[str, object]] = []
+    for record in mf_holdings.to_dict(orient="records"):
+        code = record.get("scheme_code")
+        name = record.get("scheme_name") or record.get("identifier")
+        subset = mf_transactions
+        if code:
+            subset = mf_transactions[
+                mf_transactions["scheme_code"].astype(str) == str(code)
+            ]
+        if subset.empty and name:
+            subset = mf_transactions[
+                mf_transactions["scheme_name"].astype(str) == str(name)
+            ]
+        if subset.empty:
+            continue
+        terminal = record.get("current_value")
+        rate, _ = compute_portfolio_xirr(
+            pd.DataFrame(),
+            mf_transactions=subset,
+            equity_terminal_value=None,
+            mf_terminal_value=float(terminal) if terminal is not None else None,
+            as_of=as_of,
+        )
+        rows.append(
+            {
+                "scheme_name": name,
+                "scheme_code": code,
+                "xirr": rate,
+                "sip_count": int((subset["txn_type"] == "sip").sum()),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def xirr(
@@ -211,17 +296,25 @@ def xirr(
     for _ in range(max_iterations):
         npv = 0.0
         derivative = 0.0
-        for when, amount in flows:
-            years = year_fraction(when)
-            discount = (1.0 + rate) ** years
-            npv += amount / discount
-            if years != 0:
-                derivative -= years * amount / ((1.0 + rate) ** (years + 1))
+        try:
+            for when, amount in flows:
+                years = year_fraction(when)
+                base_factor = 1.0 + rate
+                if base_factor <= 0:
+                    break
+                discount = base_factor ** years
+                npv += amount / discount
+                if years != 0:
+                    derivative -= years * amount / (base_factor ** (years + 1))
+        except (OverflowError, ValueError, ZeroDivisionError):
+            break
         if abs(npv) < tolerance:
             return rate
         if derivative == 0:
             break
         rate -= npv / derivative
+        if rate <= -0.9999 or rate > 10:
+            break
     return None
 
 

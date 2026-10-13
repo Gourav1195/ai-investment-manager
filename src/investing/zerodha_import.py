@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 import re
 
@@ -37,6 +38,16 @@ TRADEBOOK_ALIASES = {
     "price": ("price", "trade price", "average price"),
     "exchange": ("exchange",),
     "trade_id": ("trade id", "trade_id", "order id", "order_id"),
+}
+
+MF_TRANSACTION_ALIASES = {
+    "txn_date": ("date", "transaction date", "order date", "trade date"),
+    "scheme_name": ("scheme name", "scheme", "fund name", "mutual fund", "name"),
+    "scheme_code": ("scheme code", "amfi code", "code"),
+    "txn_type": ("transaction type", "type", "txn type", "transaction"),
+    "amount": ("amount", "value", "transaction amount"),
+    "units": ("units", "quantity", "allotted units"),
+    "nav": ("nav", "price", "allotted nav"),
 }
 
 MF_HOLDINGS_ALIASES = {
@@ -134,6 +145,27 @@ def parse_tradebook(path: str | Path) -> pd.DataFrame:
     return frame.reset_index(drop=True)
 
 
+def parse_mf_transactions(path: str | Path) -> pd.DataFrame:
+    """Parse Zerodha Coin / Console mutual fund transaction or SIP history export."""
+
+    raw = load_zerodha_table(path)
+    frame = _map_columns(
+        raw,
+        MF_TRANSACTION_ALIASES,
+        required=("txn_date", "scheme_name", "txn_type", "amount"),
+    )
+    frame["txn_date"] = frame["txn_date"].map(_normalize_trade_date)
+    frame["amount"] = frame["amount"].map(_to_float)
+    if "units" in frame.columns:
+        frame["units"] = frame["units"].map(_optional_float)
+    if "nav" in frame.columns:
+        frame["nav"] = frame["nav"].map(_optional_float)
+    if "scheme_code" in frame.columns:
+        frame["scheme_code"] = frame["scheme_code"].map(_clean_scheme_code)
+    frame["txn_type"] = frame["txn_type"].map(_normalize_mf_txn_type)
+    return frame.reset_index(drop=True)
+
+
 def parse_mf_holdings(path: str | Path) -> pd.DataFrame:
     raw = load_zerodha_table(path)
     frame = _map_columns(
@@ -179,6 +211,19 @@ def _optional_float(value: object) -> float | None:
     return _to_float(value)
 
 
+def _normalize_mf_txn_type(value: object) -> str:
+    text = str(value).strip().lower()
+    if "sip" in text or "systematic" in text:
+        return "sip"
+    if any(word in text for word in ("purchase", "buy", "invest")):
+        return "purchase"
+    if any(word in text for word in ("redemption", "sell", "withdraw")):
+        return "redemption"
+    if "dividend" in text:
+        return "dividend"
+    return text or "other"
+
+
 def _normalize_side(value: object) -> str:
     text = str(value).strip().lower()
     if text in {"buy", "b", "purchase"}:
@@ -189,7 +234,13 @@ def _normalize_side(value: object) -> str:
 
 
 def _normalize_trade_date(value: object) -> str:
-    parsed = pd.to_datetime(value, dayfirst=True, errors="coerce")
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        parsed = pd.to_datetime(text[:10], format="%Y-%m-%d", errors="coerce")
+    else:
+        parsed = pd.to_datetime(value, dayfirst=True, errors="coerce")
     if pd.isna(parsed):
         raise ValueError(f"Unrecognized trade date: {value}")
     return parsed.date().isoformat()

@@ -15,6 +15,7 @@ from src.investing.portfolio_store import PortfolioStore
 from src.investing.zerodha_import import (
     parse_equity_holdings,
     parse_mf_holdings,
+    parse_mf_transactions,
     parse_tradebook,
 )
 
@@ -76,7 +77,7 @@ def test_xirr_known_cashflows() -> None:
 def test_compute_portfolio_xirr_from_tradebook(tmp_path) -> None:
     store = _seed_store(tmp_path / "portfolio.db")
     trades = store.list_equity_trades()
-    rate = compute_portfolio_xirr(
+    rate, note = compute_portfolio_xirr(
         trades,
         equity_terminal_value=100000.0,
         mf_terminal_value=50000.0,
@@ -84,6 +85,60 @@ def test_compute_portfolio_xirr_from_tradebook(tmp_path) -> None:
     )
     assert rate is not None
     assert rate > 0
+    assert note is not None
+    assert "excluded" in note.lower()
+
+
+def test_compute_portfolio_xirr_includes_mf_with_transactions(tmp_path) -> None:
+    store = _seed_store(tmp_path / "portfolio.db")
+    trades = store.list_equity_trades()
+    mf_txns = parse_mf_transactions(EXAMPLES / "mf_transactions.example.csv")
+    key = store.record_import(
+        source="example",
+        kind="mf_transactions",
+        file_name="mf_transactions.example.csv",
+        row_count=len(mf_txns),
+    )
+    store.append_mf_transactions(
+        mf_txns, source="example", import_key=key, replace_existing=True
+    )
+    without_mf, note_without = compute_portfolio_xirr(
+        trades,
+        mf_transactions=pd.DataFrame(),
+        equity_terminal_value=100000.0,
+        mf_terminal_value=50000.0,
+        as_of=date(2025, 1, 1),
+    )
+    with_mf, note_with = compute_portfolio_xirr(
+        trades,
+        mf_transactions=store.list_mf_transactions(),
+        equity_terminal_value=100000.0,
+        mf_terminal_value=50000.0,
+        as_of=date(2025, 1, 1),
+    )
+    assert note_without is not None
+    assert note_with is None
+    assert with_mf is not None
+    assert without_mf is not None
+    assert with_mf != without_mf
+
+
+def test_build_portfolio_summary_mf_fund_xirr(tmp_path) -> None:
+    store = _seed_store(tmp_path / "portfolio.db")
+    mf_txns = parse_mf_transactions(EXAMPLES / "mf_transactions.example.csv")
+    key = store.record_import(
+        source="example",
+        kind="mf_transactions",
+        file_name="mf_transactions.example.csv",
+        row_count=len(mf_txns),
+    )
+    store.append_mf_transactions(
+        mf_txns, source="example", import_key=key, replace_existing=True
+    )
+    summary = build_portfolio_summary(store, stock_prices={}, navs={"119063": 900.0, "122639": 80.0})
+    assert summary.mf_fund_xirr is not None
+    assert len(summary.mf_fund_xirr) == 2
+    assert not summary.mf_sips.empty
 
 
 def test_amfi_nav_parser_parses_sample_text() -> None:

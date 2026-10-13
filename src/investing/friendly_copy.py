@@ -34,6 +34,11 @@ def friendly_import_error(kind: str, detail: str | None = None) -> str:
             "We could not read this mutual fund file. "
             "In Console go to **Reports → Holdings → Mutual funds**, export, and upload."
         ),
+        "mf-transactions": (
+            "We could not read this mutual fund transaction file. "
+            "In Zerodha Coin or Console export your **MF transaction / SIP history** "
+            "(CSV or Excel) and upload it without editing."
+        ),
     }
     base = guides.get(kind, "We could not import this file. Please use a Zerodha Console export.")
     if detail:
