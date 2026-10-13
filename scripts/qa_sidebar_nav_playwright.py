@@ -93,6 +93,9 @@ def main() -> int:
             desktop.wait_for_selector("text=Showing example data", timeout=60_000)
             desktop.screenshot(path=str(ARTIFACTS / "demo-banner-desktop.png"), full_page=False)
             _visit_sections(desktop, "sidebar-desktop")
+            click_sidebar_section(desktop, "Portfolio")
+            desktop.wait_for_timeout(1500)
+            desktop.screenshot(path=str(ARTIFACTS / "portfolio-xirr-desktop.png"), full_page=True)
 
             mobile = browser.new_page(viewport={"width": 390, "height": 1200})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)

@@ -7,7 +7,12 @@ from pathlib import Path
 from .kite_client import KiteReadOnlyClient
 from .kite_config import KiteCredentials, load_kite_credentials
 from .portfolio_store import PortfolioStore
-from .zerodha_import import parse_equity_holdings, parse_mf_holdings, parse_tradebook
+from .zerodha_import import (
+    parse_equity_holdings,
+    parse_mf_holdings,
+    parse_mf_transactions,
+    parse_tradebook,
+)
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples" / "zerodha_portfolio"
 
@@ -19,7 +24,7 @@ def _clear_legacy_demo_data(store: PortfolioStore) -> None:
         frame.empty or frame["source"].eq("example").all() for frame in frames
     )
     with store._connect() as connection:
-        for table in ("equity_holdings", "mf_holdings", "equity_trades"):
+        for table in ("equity_holdings", "mf_holdings", "equity_trades", "mf_transactions"):
             connection.execute(f"DELETE FROM {table} WHERE source = ?", ("example",))
         if only_demo:
             connection.execute("DELETE FROM price_cache")
@@ -84,6 +89,30 @@ def import_mf_holdings_file(
         row_count=len(frame),
     )
     return store.replace_mf_holdings(frame, source=source, import_key=import_key)
+
+
+def import_mf_transactions_file(
+    store: PortfolioStore,
+    path: Path,
+    *,
+    source: str = "zerodha_csv",
+    replace_existing: bool = False,
+) -> int:
+    frame = parse_mf_transactions(path)
+    if source != "example":
+        _clear_legacy_demo_data(store)
+    import_key = store.record_import(
+        source=source,
+        kind="mf_transactions",
+        file_name=path.name,
+        row_count=len(frame),
+    )
+    return store.append_mf_transactions(
+        frame,
+        source=source,
+        import_key=import_key,
+        replace_existing=replace_existing,
+    )
 
 
 def sync_kite_holdings(
@@ -152,6 +181,12 @@ def load_example_portfolio(store: PortfolioStore) -> dict[str, int]:
         ),
         "mf_holdings": import_mf_holdings_file(
             store, EXAMPLES_DIR / "mf_holdings.example.csv", source="example"
+        ),
+        "mf_transactions": import_mf_transactions_file(
+            store,
+            EXAMPLES_DIR / "mf_transactions.example.csv",
+            source="example",
+            replace_existing=True,
         ),
     }
     return counts

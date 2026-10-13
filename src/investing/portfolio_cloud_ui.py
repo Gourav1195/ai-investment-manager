@@ -12,6 +12,7 @@ from .upload_state import needs_processing, mark_processed
 from .portfolio_service import (
     import_equity_holdings_file,
     import_mf_holdings_file,
+    import_mf_transactions_file,
     import_tradebook_file,
     load_example_portfolio,
 )
@@ -52,6 +53,13 @@ def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False
             key="upload_tradebook",
             help="From Console: Reports → Tradebook — improves charts and annual return",
         )
+        _import_upload(
+            portfolio_path,
+            label="MF transactions / SIP history (CSV or Excel)",
+            kind="mf-transactions",
+            key="upload_mf_txn",
+            help="From Coin or Console: MF transaction export — needed for accurate annual return on funds",
+        )
     else:
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -78,6 +86,18 @@ def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False
                 key="upload_mf",
                 help="Reports → Holdings → Mutual funds",
             )
+        st.markdown("**Mutual fund cashflows (optional)**")
+        st.caption(
+            "Upload Zerodha Coin / Console MF transaction or SIP history so annual return (XIRR) "
+            "includes your mutual funds."
+        )
+        _import_upload(
+            portfolio_path,
+            label="MF transactions / SIP history (CSV/Excel)",
+            kind="mf-transactions",
+            key="upload_mf_txn",
+            help="Coin or Console MF transaction export",
+        )
 
 
 def _import_upload(
@@ -102,6 +122,10 @@ def _import_upload(
             count = import_equity_holdings_file(store, temp_path)
         elif kind == "tradebook":
             count = import_tradebook_file(
+                store, temp_path, replace_existing=True
+            )
+        elif kind == "mf-transactions":
+            count = import_mf_transactions_file(
                 store, temp_path, replace_existing=True
             )
         else:

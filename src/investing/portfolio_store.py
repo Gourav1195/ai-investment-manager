@@ -13,7 +13,7 @@ import pandas as pd
 
 from .filings import IST
 
-PORTFOLIO_STORE_VERSION = 2
+PORTFOLIO_STORE_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -181,6 +181,51 @@ class PortfolioStore:
 
     def list_equity_trades(self) -> pd.DataFrame:
         return self._read_table("equity_trades", order_by="trade_date")
+
+    def append_mf_transactions(
+        self,
+        frame: pd.DataFrame,
+        *,
+        source: str,
+        import_key: str,
+        replace_existing: bool = False,
+    ) -> int:
+        imported_at = datetime.now(tz=IST).isoformat()
+        rows = 0
+        with self._connect() as connection:
+            if replace_existing:
+                connection.execute("DELETE FROM mf_transactions")
+            for record in frame.to_dict(orient="records"):
+                txn_key = (
+                    f"{record.get('txn_date')}:{record.get('scheme_code') or record.get('scheme_name')}:"
+                    f"{record.get('txn_type')}:{record.get('amount')}:{rows}"
+                )
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO mf_transactions (
+                        txn_key, scheme_code, scheme_name, txn_date, txn_type,
+                        amount, units, nav, source, import_key, imported_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        txn_key,
+                        _optional_str(record.get("scheme_code")),
+                        str(record.get("scheme_name", "")),
+                        str(record["txn_date"]),
+                        str(record["txn_type"]),
+                        float(record["amount"]),
+                        _optional_float(record.get("units")),
+                        _optional_float(record.get("nav")),
+                        source,
+                        import_key,
+                        imported_at,
+                    ),
+                )
+                rows += 1
+        return rows
+
+    def list_mf_transactions(self) -> pd.DataFrame:
+        return self._read_table("mf_transactions", order_by="txn_date")
 
     def list_imports(self) -> pd.DataFrame:
         return self._read_table("portfolio_imports", order_by="imported_at DESC")
@@ -469,6 +514,20 @@ class PortfolioStore:
                     imported_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS mf_transactions (
+                    txn_key TEXT PRIMARY KEY,
+                    scheme_code TEXT,
+                    scheme_name TEXT NOT NULL,
+                    txn_date TEXT NOT NULL,
+                    txn_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    units REAL,
+                    nav REAL,
+                    source TEXT NOT NULL,
+                    import_key TEXT NOT NULL,
+                    imported_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS nav_cache (
                     scheme_code TEXT NOT NULL,
                     nav_date TEXT NOT NULL,
@@ -510,6 +569,30 @@ class PortfolioStore:
                 VALUES ('store_version', ?)
                 """,
                 (str(PORTFOLIO_STORE_VERSION),),
+            )
+            connection.execute(
+                """
+                UPDATE portfolio_meta SET value = ?
+                WHERE key = 'store_version' AND CAST(value AS INTEGER) < ?
+                """,
+                (str(PORTFOLIO_STORE_VERSION), PORTFOLIO_STORE_VERSION),
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS mf_transactions (
+                    txn_key TEXT PRIMARY KEY,
+                    scheme_code TEXT,
+                    scheme_name TEXT NOT NULL,
+                    txn_date TEXT NOT NULL,
+                    txn_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    units REAL,
+                    nav REAL,
+                    source TEXT NOT NULL,
+                    import_key TEXT NOT NULL,
+                    imported_at TEXT NOT NULL
+                )
+                """
             )
 
 

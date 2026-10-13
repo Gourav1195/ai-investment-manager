@@ -355,6 +355,8 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         _format_xirr(summary.xirr),
         help=TERM_HELP["xirr"],
     )
+    if summary.xirr_note:
+        st.info(summary.xirr_note)
     if summary.absolute_return_pct is not None:
         st.caption(
             f"Absolute return: {summary.absolute_return_pct * 100:.2f}% "
@@ -373,6 +375,7 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         use_container_width=True,
         hide_index=True,
     )
+    _render_mf_xirr_and_sips(summary)
     st.markdown("**Combined allocation**")
     st.dataframe(
         format_holdings_table(summary.combined),
@@ -421,6 +424,22 @@ def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
     reports = load_mf_peer_reports(portfolio_path, sync_master=False, allow_network=False)
     if not summary.mutual_funds.empty:
         render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
+    _render_mf_xirr_and_sips(summary)
+
+
+def _render_mf_xirr_and_sips(summary) -> None:
+    fund_xirr = summary.mf_fund_xirr
+    if fund_xirr is not None and not fund_xirr.empty:
+        display = fund_xirr.copy()
+        if "xirr" in display.columns:
+            display["xirr"] = display["xirr"].map(_format_xirr)
+        st.markdown("**Per-fund annual return (XIRR)**")
+        st.dataframe(display, use_container_width=True, hide_index=True)
+    sips = summary.mf_sips
+    if sips is not None and not sips.empty:
+        cols = [c for c in ("txn_date", "scheme_name", "amount", "units", "nav") if c in sips.columns]
+        st.markdown("**SIP instalments**")
+        st.dataframe(sips[cols], use_container_width=True, hide_index=True)
 
 
 def _render_mf_peers_section(portfolio_path: Path) -> None:
