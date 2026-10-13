@@ -377,6 +377,7 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
     )
     _render_mf_xirr_and_sips(summary)
     _render_capital_gains_section(portfolio_path, summary)
+    _render_asset_allocation_section(portfolio_path, summary)
     st.markdown("**Combined allocation**")
     st.dataframe(
         format_holdings_table(summary.combined),
@@ -426,6 +427,36 @@ def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
     if not summary.mutual_funds.empty:
         render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
     _render_mf_xirr_and_sips(summary)
+
+
+def _render_asset_allocation_section(portfolio_path: Path, summary) -> None:
+    from .portfolio_allocation import build_allocation_frames
+    from .portfolio_store import PortfolioStore
+
+    store = PortfolioStore(portfolio_path)
+    lookup = store.get_scheme_meta
+    by_asset, by_cap, regular = build_allocation_frames(
+        summary.equity,
+        summary.mutual_funds,
+        scheme_meta_lookup=lookup,
+    )
+    if by_asset.empty:
+        return
+    st.markdown("**Asset allocation**")
+    st.caption("Mutual funds grouped by AMFI category; stocks shown as equity.")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("*By asset class (equity / debt / gold / hybrid)*")
+        st.dataframe(by_asset, use_container_width=True, hide_index=True)
+    with col2:
+        st.markdown("*Equity style (large / mid / small / flexi)*")
+        st.dataframe(by_cap, use_container_width=True, hide_index=True)
+    if not regular.empty:
+        st.warning(
+            "Some holdings are **Regular** plans — you may pay more yearly than a Direct plan "
+            "in the same fund category."
+        )
+        st.dataframe(regular, use_container_width=True, hide_index=True)
 
 
 def _render_capital_gains_section(portfolio_path: Path, summary) -> None:
