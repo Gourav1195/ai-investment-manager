@@ -8,8 +8,14 @@ import streamlit as st
 
 from .auth_cookies import read_remember_cookie, write_remember_cookie
 from .auth_browser import render_browser_auth
-from .auth_remember import QUERY_PARAM, mint_remember_token, verify_remember_token
-from .cloud_persistence import is_cloud_persistence_configured
+from .auth_remember import (
+    QUERY_PARAM,
+    mint_remember_token,
+    using_custom_signing_key,
+    verify_remember_token,
+    warn_if_default_signing_key,
+)
+from .cloud_persistence import is_cloud_persistence_configured, is_streamlit_community_cloud
 
 
 def require_app_password() -> None:
@@ -22,9 +28,21 @@ def require_app_password() -> None:
         )
         st.stop()
 
+    if is_streamlit_community_cloud() and not _configured_password():
+        st.error(
+            "This app is deployed on **Streamlit Community Cloud** without a login password. "
+            "Portfolio and research data must not be public. "
+            "Add **`APP_PASSWORD`** in **Settings → Secrets**, then reboot the app. "
+            "Optionally add **`DATABASE_URL`** (Postgres) so data survives restarts — see **Storage & help**."
+        )
+        st.stop()
+
     expected = _configured_password()
     if not expected:
         return
+
+    warn_if_default_signing_key()
+
     if st.session_state.get("app_password_ok"):
         token = st.session_state.get("_remember_token")
         if token:

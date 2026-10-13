@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      CI_POSTGRES_URL: postgresql://postgres:testpass@localhost:5432/investing
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: investing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d investing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          python -m playwright install chromium
+
+      - name: Pytest
+        run: python -m pytest tests/ -q
+
+      - name: Playwright E2E (Streamlit UI)
+        run: |
+          INVESTING_UI_RESEARCH_OFFLINE=1 streamlit run streamlit_app.py \
+            --server.port 8501 --server.headless true &
+          for i in $(seq 1 45); do
+            curl -sf http://127.0.0.1:8501/_stcore/health && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8501/_stcore/health
+          python scripts/e2e_ui_verify.py http://127.0.0.1:8501

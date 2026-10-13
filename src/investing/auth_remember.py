@@ -14,6 +14,36 @@ COOKIE_NAME = "investing_remember"
 QUERY_PARAM = "investing_auth"
 
 
+def using_custom_signing_key() -> bool:
+    try:
+        import streamlit as st
+
+        if st.secrets.get("APP_AUTH_SIGNING_KEY"):
+            return True
+    except Exception:
+        pass
+    return bool(os.environ.get("APP_AUTH_SIGNING_KEY", "").strip())
+
+
+def warn_if_default_signing_key() -> None:
+    """Surface once per session when remember-me uses the derived fallback key."""
+
+    if using_custom_signing_key():
+        return
+    try:
+        import streamlit as st
+    except Exception:
+        return
+    if st.session_state.get("_warned_default_signing_key"):
+        return
+    st.session_state["_warned_default_signing_key"] = True
+    st.warning(
+        "**APP_AUTH_SIGNING_KEY** is not set. “Remember me” tokens use a key derived from your "
+        "login password. For production (especially Streamlit Cloud), add a long random "
+        "`APP_AUTH_SIGNING_KEY` in **Settings → Secrets** so session cookies are signed independently."
+    )
+
+
 def _signing_key(password: str) -> bytes:
     try:
         import streamlit as st

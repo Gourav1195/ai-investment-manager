@@ -16,7 +16,7 @@ APP_PASSWORD = "a-strong-private-password"
 | Secret | Required when | Purpose |
 |--------|----------------|---------|
 | `DATABASE_URL` | Optional | Postgres connection string from Neon or Supabase. When set, the app loads and saves your data there automatically. |
-| `APP_PASSWORD` | **Required** if `DATABASE_URL` is set | Stops strangers from opening your app and reading your portfolio. |
+| `APP_PASSWORD` | **Required on Streamlit Community Cloud** (and whenever `DATABASE_URL` is set) | Stops strangers from opening your app and reading your portfolio. |
 
 Do **not** commit these values to GitHub or share them in chat logs.
 
