@@ -42,7 +42,7 @@ def parse_amfi_nav_all(text: str) -> pd.DataFrame:
         scheme_code = parts[0]
         if not scheme_code.isdigit():
             continue
-        scheme_name = parts[1]
+        scheme_name = parts[3] if len(parts) >= 6 and parts[3] else parts[1]
         plan_type, option_type, is_direct, is_growth = _classify_plan_option(scheme_name)
         rows.append(
             {

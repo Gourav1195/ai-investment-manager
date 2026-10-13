@@ -33,7 +33,7 @@ APP_PASSWORD = "your-private-password"
 ```
 
 When `APP_PASSWORD` is set, users must enter it before the dashboard loads.
-Check **Remember me for 30 days** to stay signed in (signed browser cookie; legacy URL tokens are migrated and removed — never stores the plain password).
+Check **Remember me for 30 days** to stay signed in (signed cookie plus browser-storage restoration; legacy URL tokens are migrated and removed — never stores the plain password).
 Optional `APP_AUTH_SIGNING_KEY` in secrets strengthens cookie signing (recommended for production).
 Leave `APP_PASSWORD` unset for a public demo.
 
@@ -60,7 +60,7 @@ INVESTING_WORK_DIR = "/mount/path"  # defaults to repo/work/
 
 Everything runs in the browser—no command line required.
 
-1. Open **Dashboard** and choose **Try demo portfolio**, or **Add my holdings**.
+1. Open **Dashboard**. Demo is selected automatically until you add real holdings. Choose **Upload my portfolio** or **Connect Zerodha** to add yours.
 2. Use **Portfolio** for holdings and returns; **My mutual funds** for fund charts.
 3. Open **Top mutual funds**, click **Refresh fund list**, pick a category, then **Load rankings**.
 4. Stock research is optional: choose **Run research**, then review **Saved research**.

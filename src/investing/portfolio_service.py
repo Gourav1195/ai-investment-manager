@@ -5,11 +5,25 @@ from __future__ import annotations
 from pathlib import Path
 
 from .kite_client import KiteReadOnlyClient
-from .kite_config import load_kite_credentials
+from .kite_config import KiteCredentials, load_kite_credentials
 from .portfolio_store import PortfolioStore
 from .zerodha_import import parse_equity_holdings, parse_mf_holdings, parse_tradebook
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples" / "zerodha_portfolio"
+
+
+def _clear_legacy_demo_data(store: PortfolioStore) -> None:
+    """Remove labelled sample data only after a real import has been parsed."""
+    frames = (store.list_equity_holdings(), store.list_mf_holdings())
+    only_demo = any(not frame.empty for frame in frames) and all(
+        frame.empty or frame["source"].eq("example").all() for frame in frames
+    )
+    with store._connect() as connection:
+        for table in ("equity_holdings", "mf_holdings", "equity_trades"):
+            connection.execute(f"DELETE FROM {table} WHERE source = ?", ("example",))
+        if only_demo:
+            connection.execute("DELETE FROM price_cache")
+            connection.execute("DELETE FROM nav_cache")
 
 
 def import_equity_holdings_file(
@@ -19,6 +33,8 @@ def import_equity_holdings_file(
     source: str = "zerodha_csv",
 ) -> int:
     frame = parse_equity_holdings(path)
+    if source != "example":
+        _clear_legacy_demo_data(store)
     import_key = store.record_import(
         source=source,
         kind="equity_holdings",
@@ -36,6 +52,8 @@ def import_tradebook_file(
     replace_existing: bool = False,
 ) -> int:
     frame = parse_tradebook(path)
+    if source != "example":
+        _clear_legacy_demo_data(store)
     import_key = store.record_import(
         source=source,
         kind="tradebook",
@@ -57,6 +75,8 @@ def import_mf_holdings_file(
     source: str = "zerodha_csv",
 ) -> int:
     frame = parse_mf_holdings(path)
+    if source != "example":
+        _clear_legacy_demo_data(store)
     import_key = store.record_import(
         source=source,
         kind="mf_holdings",
@@ -70,10 +90,22 @@ def sync_kite_holdings(
     store: PortfolioStore,
     *,
     kite_config: Path | None = None,
+    credentials: KiteCredentials | None = None,
 ) -> tuple[int, int]:
-    client = KiteReadOnlyClient(load_kite_credentials(kite_config))
+    client = KiteReadOnlyClient(credentials or load_kite_credentials(kite_config))
     equity = client.equity_holdings_frame()
     mf = client.mf_holdings_frame()
+    # Resolve a code only when the cached AMFI name identifies one unique scheme.
+    master = store._read_table("mf_scheme_master")
+    if not mf.empty and not master.empty:
+        for index, row in mf.iterrows():
+            if str(row["scheme_code"]).isdigit():
+                continue
+            name = str(row["scheme_name"]).strip().casefold()
+            matches = master[master["scheme_name"].astype(str).str.strip().str.casefold() == name]
+            if len(matches) == 1:
+                mf.at[index, "scheme_code"] = str(matches.iloc[0]["scheme_code"])
+    _clear_legacy_demo_data(store)
     equity_key = store.record_import(
         source="kite_api",
         kind="equity_holdings",
@@ -90,6 +122,20 @@ def sync_kite_holdings(
         equity, source="kite_api", import_key=equity_key
     )
     mf_rows = store.replace_mf_holdings(mf, source="kite_api", import_key=mf_key)
+    from .portfolio_pricing import cache_stock_prices, cache_navs
+
+    stock_prices = {
+        str(row["symbol"]): float(row["last_price"])
+        for row in equity.to_dict(orient="records")
+        if row.get("last_price") is not None and float(row["last_price"]) > 0
+    }
+    navs = {
+        str(row["scheme_code"]): float(row["last_price"])
+        for row in mf.to_dict(orient="records")
+        if row.get("scheme_code") and row.get("last_price") is not None and float(row["last_price"]) > 0
+    }
+    cache_stock_prices(store, stock_prices)
+    cache_navs(store, navs)
     return equity_rows, mf_rows
 
 

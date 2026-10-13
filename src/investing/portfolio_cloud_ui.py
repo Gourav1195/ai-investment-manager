@@ -126,6 +126,8 @@ def _import_upload(
             count = import_mf_holdings_file(store, temp_path)
         st.success(f"Added {count} rows from {uploaded.name}.")
         mark_processed(uploaded, key, portfolio_path)
+        st.session_state["portfolio_source"] = "My portfolio"
+        st.session_state.pop("home_setup", None)
         st.rerun()
     except Exception as error:  # noqa: BLE001
         st.error(friendly_import_error(kind, str(error)))

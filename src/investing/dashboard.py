@@ -121,6 +121,13 @@ def _run_dashboard() -> None:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     maybe_auto_load_demo_for_qa(portfolio_path, prefs)
 
+    personal_portfolio_path = portfolio_path
+    from .portfolio_start import render_start_choices, render_start_setup, selected_portfolio_path
+
+    if active_section == "Dashboard":
+        render_start_choices(personal_portfolio_path)
+    portfolio_path = selected_portfolio_path(personal_portfolio_path, work_dir)
+
     store = ResearchStore(database_path) if database_path.exists() else None
     options = filter_options(store) if store is not None else {
         "symbols": [],
@@ -141,6 +148,11 @@ def _run_dashboard() -> None:
 
     if active_section == "Dashboard":
         render_welcome_header(name.strip())
+        if st.session_state.get("portfolio_source") == "My portfolio":
+            render_start_setup(personal_portfolio_path)
+        notice = st.session_state.pop("portfolio_notice", None)
+        if notice:
+            st.success(notice)
         try:
             wealth, _summary, peer_reports = load_wealth_snapshot(
                 portfolio_path,
@@ -166,27 +178,12 @@ def _run_dashboard() -> None:
             today_change_pct=wealth.today_change_pct,
             insights=insights,
         )
-        if not wealth.has_portfolio:
-            st.markdown("**Start with a sample portfolio or add your own holdings.**")
-            from .onboarding_ui import _load_demo_portfolio
-            from .sidebar_nav import _select_section
-
-            left, right = st.columns(2)
-            left.button(
-                "Try demo portfolio", key="dashboard_demo", type="primary",
-                use_container_width=True, on_click=_load_demo_portfolio,
-                args=(portfolio_path, prefs),
-            )
-            right.button(
-                "Add my holdings", key="dashboard_import", use_container_width=True,
-                on_click=_select_section, args=("Import & backup",),
-            )
     elif active_section == "Portfolio":
-        _render_portfolio(portfolio_path, database_path, prefs)
+        _render_portfolio(portfolio_path, database_path, prefs, import_path=personal_portfolio_path)
     elif active_section == "My mutual funds":
         _render_mutual_funds_charts_only(portfolio_path)
     elif active_section == "Top mutual funds":
-        render_top_mutual_funds_tab(portfolio_path)
+        render_top_mutual_funds_tab(personal_portfolio_path)
     elif active_section == "MF peers":
         _render_mf_peers_section(portfolio_path)
     elif active_section == "Snapshots":
@@ -215,9 +212,9 @@ def _run_dashboard() -> None:
             unsafe_allow_html=True,
         )
         st.caption("Upload Console exports, download databases, or restore a previous backup.")
-        render_portfolio_import_panel(portfolio_path)
+        render_portfolio_import_panel(personal_portfolio_path)
         st.divider()
-        render_database_backup_panel(database_path, portfolio_path)
+        render_database_backup_panel(database_path, personal_portfolio_path)
         from .cloud_persistence_ui import render_cloud_database_guide
 
         render_cloud_database_guide(expanded=False)
@@ -290,14 +287,14 @@ def _render_snapshots_tab(
         _render_detail(store, symbol=detail_symbol, as_of=detail_as_of)
 
 
-def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPreferences) -> None:
+def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPreferences, *, import_path: Path | None = None) -> None:
     st.markdown('<h3 class="royal-section-title">Your Zerodha portfolio</h3>', unsafe_allow_html=True)
     if not portfolio_path.exists() or not portfolio_has_data(portfolio_path):
-        render_portfolio_empty_state(portfolio_path, prefs)
+        render_portfolio_empty_state(import_path or portfolio_path, prefs)
         return
 
     with st.expander("Add or replace files from Zerodha Console", expanded=False):
-        render_portfolio_import_panel(portfolio_path)
+        render_portfolio_import_panel(import_path or portfolio_path)
 
     benchmark_index = st.selectbox(
         "Compare my stocks to",

@@ -33,13 +33,14 @@ class KiteReadOnlyClient:
                 {
                     "symbol": _equity_symbol(item),
                     "isin": item.get("isin"),
-                    "quantity": float(item.get("quantity") or item.get("opening_quantity") or 0),
+                    "quantity": float(item.get("quantity") if item.get("quantity") is not None else item.get("opening_quantity") or 0),
                     "average_price": float(item.get("average_price") or 0),
                     "product": item.get("product"),
                     "exchange": item.get("exchange"),
+                    "last_price": _optional_float(item.get("last_price")),
                 }
             )
-        frame = pd.DataFrame(records)
+        frame = pd.DataFrame(records, columns=["symbol", "isin", "quantity", "average_price", "product", "exchange", "last_price"])
         return frame[frame["quantity"] > 0].reset_index(drop=True)
 
     def mf_holdings_frame(self) -> pd.DataFrame:
@@ -49,14 +50,15 @@ class KiteReadOnlyClient:
         for item in rows:
             records.append(
                 {
-                    "scheme_code": str(item.get("fund") or item.get("tradingsymbol") or ""),
+                    "scheme_code": _mf_identifier(item),
                     "scheme_name": str(item.get("fund") or item.get("tradingsymbol") or ""),
                     "folio": item.get("folio"),
                     "units": float(item.get("quantity") or 0),
                     "average_nav": _optional_float(item.get("average_price")),
+                    "last_price": _optional_float(item.get("last_price")),
                 }
             )
-        frame = pd.DataFrame(records)
+        frame = pd.DataFrame(records, columns=["scheme_code", "scheme_name", "folio", "units", "average_nav", "last_price"])
         return frame[frame["units"] > 0].reset_index(drop=True)
 
     def _get(self, path: str) -> dict[str, Any]:
@@ -88,3 +90,15 @@ def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _mf_identifier(item: dict[str, Any]) -> str:
+    # Kite identifies Coin holdings by ISIN; fund is a display name, not an AMFI code.
+    code = str(item.get("scheme_code") or "").strip()
+    if code.isdigit():
+        return code
+    symbol = str(item.get("tradingsymbol") or "").strip()
+    if symbol:
+        return symbol
+    fund = str(item.get("fund") or "").strip()
+    return fund if fund.isdigit() else ""
