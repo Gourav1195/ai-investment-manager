@@ -382,12 +382,16 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         st.markdown("**Portfolio vs benchmark (indexed)**")
         chart = comparison.set_index("date")[["portfolio_indexed", "benchmark_indexed"]]
         st.line_chart(chart)
-    else:
+    elif PortfolioStore(portfolio_path).list_equity_trades().empty:
         render_empty_state(
             "📉",
-            "Benchmark chart needs a tradebook",
-            "Upload your Zerodha tradebook export to compare performance against Nifty.",
+            "Add trade history for a comparison chart",
+            "Upload your Zerodha tradebook export, then choose Update prices & charts.",
         )
+    elif refresh:
+        st.info("The comparison chart could not be loaded. Try Update prices & charts again later.")
+    else:
+        st.caption("Choose Update prices & charts to compare your saved trade history with Nifty.")
 
 
 def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
