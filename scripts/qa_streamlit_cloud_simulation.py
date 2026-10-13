@@ -67,7 +67,7 @@ def main() -> int:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            page.wait_for_selector("text=Dashboard", timeout=120_000)
             page.wait_for_selector(
                 "text=Temporary session",
                 timeout=30_000,
@@ -115,15 +115,15 @@ def main() -> int:
             page.wait_for_timeout(2000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-profile.png"), full_page=True)
 
-            click_section("Orchestration runs")
+            click_section("Orchestration")
             page.wait_for_timeout(1000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-orchestration.png"), full_page=True)
 
-            click_section("Top Mutual Funds")
+            click_section("Top mutual funds")
             page.wait_for_timeout(2000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-top-mf.png"), full_page=True)
 
-            click_section("My Mutual Funds")
+            click_section("My mutual funds")
             page.wait_for_timeout(5000)
             page.screenshot(path=str(ARTIFACTS / "cloud-portfolio-mf-charts.png"), full_page=True)
             browser.close()

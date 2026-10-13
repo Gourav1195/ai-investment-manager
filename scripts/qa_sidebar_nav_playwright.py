@@ -15,16 +15,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 ARTIFACTS = Path(os.environ.get("QA_SCREENSHOT_DIR", "/tmp/qa-screenshots"))
 PORT = int(os.environ.get("QA_STREAMLIT_PORT", "8524"))
 
-SECTIONS = (
-    "Wealth at a glance",
-    "Portfolio",
-    "My Mutual Funds",
-    "Top Mutual Funds",
-    "Snapshots",
-    "Profile review",
-    "Orchestration runs",
-    "About",
-)
+sys.path.insert(0, str(ROOT))
+from src.investing.sidebar_nav import SIDEBAR_SECTIONS
+
+SECTIONS = SIDEBAR_SECTIONS
 
 
 def _start(work_dir: Path) -> subprocess.Popen[bytes]:
@@ -73,7 +67,9 @@ def _visit_sections(page, prefix: str) -> None:
 
     for label in SECTIONS:
         click_sidebar_section(page, label)
-        expect(page.get_by_role("radio", name=label)).to_be_checked(timeout=15_000)
+        expect(page.get_by_role("radio", name=label, exact=True)).to_be_checked(
+            timeout=15_000
+        )
         expect(page.locator('[data-testid="stException"]')).to_have_count(0)
         expect(page.get_by_text("We hit a snag")).to_have_count(0)
         safe = label.lower().replace(" ", "-")
@@ -94,12 +90,12 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Go to", timeout=120_000)
+            desktop.wait_for_selector("text=Menu", timeout=120_000)
             _visit_sections(desktop, "sidebar-desktop")
 
             mobile = browser.new_page(viewport={"width": 390, "height": 1200})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            mobile.wait_for_selector("text=Go to", timeout=120_000)
+            mobile.wait_for_selector("text=Menu", timeout=120_000)
             _visit_sections(mobile, "sidebar-mobile")
 
             browser.close()

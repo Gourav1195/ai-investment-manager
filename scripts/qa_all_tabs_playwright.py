@@ -14,16 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = Path(os.environ.get("QA_SCREENSHOT_DIR", "/opt/cursor/artifacts/screenshots"))
 PORT = int(os.environ.get("QA_STREAMLIT_PORT", "8523"))
 
-SECTIONS = (
-    "Wealth at a glance",
-    "Portfolio",
-    "My Mutual Funds",
-    "Top Mutual Funds",
-    "Snapshots",
-    "Profile review",
-    "Orchestration runs",
-    "About",
-)
+sys.path.insert(0, str(ROOT))
+from src.investing.sidebar_nav import SIDEBAR_SECTIONS
+
+SECTIONS = SIDEBAR_SECTIONS
 
 
 def _start(work_dir: Path) -> subprocess.Popen[bytes]:
@@ -92,12 +86,12 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Go to", timeout=120_000)
+            desktop.wait_for_selector("text=Menu", timeout=120_000)
             _visit_sections(desktop, "pro-tabs-desktop")
 
             mobile = browser.new_page(viewport={"width": 390, "height": 844})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            mobile.wait_for_selector("text=Go to", timeout=120_000)
+            mobile.wait_for_selector("text=Menu", timeout=120_000)
             _visit_sections(mobile, "pro-tabs-mobile")
 
             browser.close()

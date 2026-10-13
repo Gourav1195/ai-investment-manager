@@ -1,4 +1,4 @@
-"""Guided first-run experience for Zerodha portfolio upload."""
+"""Portfolio empty state helpers (no full-screen onboarding gate)."""
 
 from __future__ import annotations
 
@@ -13,69 +13,40 @@ from .portfolio_store import PortfolioStore
 from .repo_bootstrap import repo_root
 from .royal_theme import render_empty_state
 
-
 GUIDE_SVG = repo_root() / "docs" / "assets" / "zerodha-console-export-guide.svg"
 
 
-def render_first_run_wizard(
-    portfolio_path: Path,
-    prefs: AppPreferences,
-    *,
-    import_panel_renderer,
-) -> bool:
-    """Return True when step 1 is showing (no holdings yet)."""
-
-    has_data = portfolio_path.exists() and portfolio_has_data(portfolio_path)
-    if has_data:
-        if not prefs.get_onboarding_complete():
-            prefs.set_onboarding_complete(True)
-        _render_step_two_banner()
-        return False
+def render_portfolio_empty_state(portfolio_path: Path, prefs: AppPreferences) -> None:
+    """Inline upload help on the Portfolio page — does not block the Dashboard."""
 
     st.markdown(
-        '<p class="royal-onboarding-badge">Step 1 of 2 — Add your Zerodha files</p>',
-        unsafe_allow_html=True,
+        "### Add your Zerodha holdings\n"
+        "Download exports from **[Zerodha Console](https://console.zerodha.com/)** "
+        "(Reports → Holdings) and upload below, or try the demo."
     )
-    st.markdown(
-        "### Bring your portfolio here in a few clicks\n"
-        "Download files from **Zerodha Console** on the web — no coding or API keys."
-    )
-
-    with st.expander("Where do I download these files in Console?", expanded=True):
-        if GUIDE_SVG.exists():
-            try:
-                st.image(str(GUIDE_SVG), use_container_width=True)
-            except Exception:
-                st.caption("Picture guide skipped — follow the numbered steps below.")
-        st.markdown(
-            """
-1. Log in to **[Zerodha Console](https://console.zerodha.com/)** (website, not the Kite app).
-2. Click **Reports** on the left.
-3. **Stocks you own** — *Reports → Holdings → Equity* → download **CSV** or **Excel**.
-4. **Mutual funds** — *Reports → Holdings → Mutual funds* → download.
-5. **Trade history** (optional) — *Reports → Tradebook* → choose dates → download (helps charts and annual return).
-
-Upload below. You can start with only the equity file and add others later.
-            """
-        )
+    if GUIDE_SVG.exists():
+        try:
+            st.image(str(GUIDE_SVG), use_container_width=True)
+        except Exception:
+            pass
 
     st.button(
-        "Try demo portfolio first (no files needed)",
+        "Try demo portfolio (sample data)",
         type="primary",
         use_container_width=True,
-        key="onboarding_demo_portfolio",
-        help="Sample Indian stocks and mutual funds — safe way to explore the app.",
+        key="portfolio_demo_button",
         on_click=_load_demo_portfolio,
         args=(portfolio_path, prefs),
     )
 
-    import_panel_renderer(portfolio_path, compact=True)
+    from .portfolio_cloud_ui import render_portfolio_import_panel
+
+    render_portfolio_import_panel(portfolio_path, compact=True)
     render_empty_state(
         "📥",
-        "Waiting for your files",
-        "Tap the demo button above to preview instantly, or upload Console exports below.",
+        "No holdings yet",
+        "Use the demo button above or upload a Console export.",
     )
-    return True
 
 
 def _load_demo_portfolio(portfolio_path: Path, prefs: AppPreferences) -> None:
@@ -100,10 +71,12 @@ def maybe_auto_load_demo_for_qa(portfolio_path: Path, prefs: AppPreferences) -> 
     _load_demo_portfolio(portfolio_path, prefs)
 
 
-def _render_step_two_banner() -> None:
-    st.markdown(
-        '<p class="royal-onboarding-badge royal-onboarding-badge--done">'
-        "Step 2 of 2 — Your portfolio is connected</p>",
-        unsafe_allow_html=True,
-    )
-    st.success("Scroll down to see your holdings, charts, and fund comparisons.")
+# Backward compatibility for tests/scripts that still import the old name.
+def render_first_run_wizard(
+    portfolio_path: Path,
+    prefs: AppPreferences,
+    *,
+    import_panel_renderer,
+) -> bool:
+    render_portfolio_empty_state(portfolio_path, prefs)
+    return True

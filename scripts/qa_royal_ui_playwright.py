@@ -83,7 +83,7 @@ def main() -> int:
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Go to", timeout=120_000)
+            desktop.wait_for_selector("text=Menu", timeout=120_000)
             desktop.screenshot(path=str(ARTIFACTS / "royal-before-desktop-home.png"), full_page=True)
             _nav_section(desktop, "About")
             desktop.wait_for_timeout(1500)
@@ -107,9 +107,9 @@ def main() -> int:
 
             mobile = browser.new_page(viewport={"width": 390, "height": 844})
             mobile.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            mobile.wait_for_selector("text=Go to", timeout=120_000)
+            mobile.wait_for_selector("text=Menu", timeout=120_000)
             mobile.screenshot(path=str(ARTIFACTS / "royal-after-mobile-home.png"), full_page=True)
-            _nav_section(mobile, "My Mutual Funds")
+            _nav_section(mobile, "My mutual funds")
             mobile.wait_for_timeout(3000)
             mobile.screenshot(path=str(ARTIFACTS / "royal-after-mobile-mf.png"), full_page=True)
 

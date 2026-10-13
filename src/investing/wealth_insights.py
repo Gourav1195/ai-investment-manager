@@ -94,7 +94,9 @@ def plain_english_insights(reports: list[PeerComparisonReport], limit: int = 4) 
         if len(insights) >= limit:
             break
     if not insights and reports:
-        insights.append("Your mutual funds are loaded — open **My Mutual Funds** for peer details.")
+        insights.append(
+            "Your mutual funds are loaded — open **My mutual funds** or **MF peers** in the menu."
+        )
     return insights[:limit]
 
 

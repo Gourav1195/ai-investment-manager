@@ -82,12 +82,12 @@ def main() -> int:
             browser = pw.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 390, "height": 844})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            page.wait_for_selector("text=Dashboard", timeout=120_000)
             _nav_section(page, "Portfolio")
-            page.wait_for_selector("text=Step 1 of 2", timeout=120_000)
+            page.wait_for_selector("text=Add your Zerodha holdings", timeout=120_000)
             page.screenshot(path=str(ARTIFACTS / "first-time-step1-mobile.png"), full_page=True)
 
-            expect(page.get_by_text("Where do I download these files in Console?")).to_be_visible()
+            expect(page.get_by_text("Try demo portfolio")).to_be_visible()
             expect(page.locator('[data-testid="stException"]')).to_have_count(0)
             expect(
                 page.get_by_role(
@@ -98,20 +98,20 @@ def main() -> int:
 
             _seed_demo_portfolio(work_dir)
             page.reload(wait_until="domcontentloaded", timeout=120_000)
-            page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            page.wait_for_selector("text=Dashboard", timeout=120_000)
             expect(page.locator('[data-testid="stException"]')).to_have_count(0)
             _nav_section(page, "Portfolio")
             page.wait_for_selector("text=Money you put in", timeout=120_000)
             expect(page.locator('[data-testid="stException"]')).to_have_count(0)
             page.screenshot(path=str(ARTIFACTS / "first-time-step2-mobile.png"), full_page=True)
 
-            _nav_section(page, "My Mutual Funds")
+            _nav_section(page, "My mutual funds")
             page.wait_for_timeout(3000)
             page.screenshot(path=str(ARTIFACTS / "first-time-mf-tab-mobile.png"), full_page=True)
 
             desktop = browser.new_page(viewport={"width": 1440, "height": 1200})
             desktop.goto(base, wait_until="domcontentloaded", timeout=120_000)
-            desktop.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            desktop.wait_for_selector("text=Dashboard", timeout=120_000)
             desktop.screenshot(path=str(ARTIFACTS / "first-time-desktop-home.png"), full_page=True)
             expect(desktop.locator('[data-testid="stException"]')).to_have_count(0)
 

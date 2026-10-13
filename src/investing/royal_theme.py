@@ -250,6 +250,12 @@ h1, h2, h3, .royal-title {
   margin: 0.5rem 0 0.25rem 0;
 }
 
+.royal-sidebar-name input {
+  font-size: 0.9rem !important;
+  padding: 0.35rem 0.5rem !important;
+  min-height: 2rem !important;
+}
+
 section[data-testid="stSidebar"] div[data-testid="stRadio"] {
   max-height: 15rem;
   overflow-y: auto;

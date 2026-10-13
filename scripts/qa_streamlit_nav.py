@@ -15,7 +15,7 @@ def click_sidebar_section(page, label: str) -> None:
     sidebar = page.locator('section[data-testid="stSidebar"]')
     content = sidebar.locator('[data-testid="stSidebarContent"]')
     content.evaluate("el => { el.scrollTop = 0; }")
-    radio = sidebar.get_by_role("radio", name=label)
+    radio = sidebar.get_by_role("radio", name=label, exact=True)
     if radio.count() and radio.is_checked():
         page.wait_for_timeout(400)
         return

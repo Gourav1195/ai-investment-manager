@@ -33,7 +33,9 @@ APP_PASSWORD = "your-private-password"
 ```
 
 When `APP_PASSWORD` is set, users must enter it before the dashboard loads.  
-Leave unset for a public demo.
+Check **Remember me for 30 days** to stay signed in (signed cookie + optional URL token — never stores the plain password).  
+Optional `APP_AUTH_SIGNING_KEY` in secrets strengthens cookie signing (recommended for production).  
+Leave `APP_PASSWORD` unset for a public demo.
 
 ### Optional cloud database (data survives restarts)
 

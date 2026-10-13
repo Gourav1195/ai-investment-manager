@@ -55,7 +55,7 @@ def render_data_persistence_badge(state: PersistenceState) -> None:
         st.markdown(
             '<p class="royal-persistence-badge royal-persistence-temp">'
             "Temporary session: data resets when the app restarts on Streamlit Cloud. "
-            "See <strong>Quick guide</strong> in the sidebar to enable cloud saving."
+            "Open <strong>Import & backup</strong> in the menu for cloud database steps."
             "</p>",
             unsafe_allow_html=True,
         )
