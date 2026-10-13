@@ -3,24 +3,12 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 
-from .auth_remember import (
-    COOKIE_NAME,
-    QUERY_PARAM,
-    mint_remember_token,
-    verify_remember_token,
-)
+from .auth_cookies import read_remember_cookie, write_remember_cookie
+from .auth_remember import QUERY_PARAM, mint_remember_token, verify_remember_token
 from .cloud_persistence import is_cloud_persistence_configured
-
-
-@st.cache_resource
-def _cookie_manager():
-    import extra_streamlit_components as stx
-
-    return stx.CookieManager()
 
 
 def require_app_password() -> None:
@@ -64,34 +52,32 @@ def _try_restore_remembered_session(expected: str) -> bool:
     query = st.query_params.get(QUERY_PARAM)
     if isinstance(query, list):
         query = query[0] if query else None
-    if query and verify_remember_token(str(query), expected):
+    if query and _verify_token_safe(str(query), expected):
         return True
 
-    manager = _cookie_manager()
-    cookies = manager.get_all()
-    if cookies is None:
-        if not st.session_state.get("_auth_cookie_probe_done"):
-            st.session_state["_auth_cookie_probe_done"] = True
-            st.rerun()
-        return False
-
-    token = cookies.get(COOKIE_NAME)
-    if token and verify_remember_token(str(token), expected):
+    cookie_token = read_remember_cookie()
+    if cookie_token and _verify_token_safe(cookie_token, expected):
         return True
     return False
 
 
+def _verify_token_safe(token: str, expected: str) -> bool:
+    try:
+        return verify_remember_token(token, expected)
+    except Exception:
+        return False
+
+
 def _persist_remember_token(expected: str) -> None:
-    token = mint_remember_token(expected)
-    expires = datetime.now(tz=timezone.utc) + timedelta(days=30)
-    manager = _cookie_manager()
-    manager.set(
-        COOKIE_NAME,
-        token,
-        expires_at=expires,
-        key=f"set_{COOKIE_NAME}",
-    )
-    st.query_params[QUERY_PARAM] = token
+    try:
+        token = mint_remember_token(expected)
+    except Exception:
+        return
+    try:
+        st.query_params[QUERY_PARAM] = token
+    except Exception:
+        pass
+    write_remember_cookie(token)
 
 
 def _configured_password() -> str | None:
