@@ -20,8 +20,8 @@ Streamlit Cloud runs:
 pip install -r requirements.txt
 ```
 
-That file is intentionally **lightweight** (pandas, streamlit, yfinance, openpyxl, etc.).  
-Heavy FinRL / trading packages are in `requirements-trading.txt`.  
+That file is intentionally **lightweight** (pandas, streamlit, yfinance, openpyxl, etc.).
+Heavy FinRL / trading packages are in `requirements-trading.txt`.
 Dev tools are in `requirements-dev.txt`.
 
 ## Secrets
@@ -32,9 +32,9 @@ Dev tools are in `requirements-dev.txt`.
 APP_PASSWORD = "your-private-password"
 ```
 
-When `APP_PASSWORD` is set, users must enter it before the dashboard loads.  
-Check **Remember me for 30 days** to stay signed in (signed cookie via built-in Streamlit context + optional URL token — never stores the plain password).  
-Optional `APP_AUTH_SIGNING_KEY` in secrets strengthens cookie signing (recommended for production).  
+When `APP_PASSWORD` is set, users must enter it before the dashboard loads.
+Check **Remember me for 30 days** to stay signed in (signed browser cookie; legacy URL tokens are migrated and removed — never stores the plain password).
+Optional `APP_AUTH_SIGNING_KEY` in secrets strengthens cookie signing (recommended for production).
 Leave `APP_PASSWORD` unset for a public demo.
 
 ### Optional cloud database (data survives restarts)
@@ -60,22 +60,26 @@ INVESTING_WORK_DIR = "/mount/path"  # defaults to repo/work/
 
 Everything runs in the browser—no command line required.
 
-1. Open the **Snapshots** tab (or the sidebar) and click **Run research** to build research
-   snapshots on a small stock list (demo-friendly on the free tier).
-2. Either set **`DATABASE_URL`** (see [`cloud_database.md`](cloud_database.md)) so data syncs
-   automatically, or use **Save or restore your data** in the sidebar to download/upload
-   `research.db` / `portfolio.db` backups between sessions.
-3. **Top mutual funds** — refresh the AMFI list once, pick a category, then **Load rankings**.
-4. **Portfolio** — follow **Step 1 of 2** (Console download guide + uploads) or **Try demo portfolio**.
+1. Open **Dashboard** and choose **Try demo portfolio**, or **Add my holdings**.
+2. Use **Portfolio** for holdings and returns; **My mutual funds** for fund charts.
+3. Open **Top mutual funds**, click **Refresh fund list**, pick a category, then **Load rankings**.
+4. Stock research is optional: choose **Run research**, then review **Saved research**.
+5. Use **Import & backup** to upload files or download a backup. The app owner can configure
+   `DATABASE_URL` using [the cloud database guide](cloud_database.md).
 
-Charts use Plotly; mutual fund data comes from AMFI + mfapi.in with local caching in SQLite.
+For a plain-English walkthrough, see [Getting started](getting_started.md).
 
-## Royal wealth UI
+## Wealth dashboard navigation
 
-The dashboard uses a navy / gold theme (`.streamlit/config.toml` plus in-app CSS). Your name,
-**Your wealth at a glance**, and mutual-fund insights appear at the top. Primary tabs are
-Use the **sidebar menu** for every section (wealth, portfolio, mutual funds, research, About).
-**Run research** and **Backup / restore** are always visible in the sidebar; only database file paths sit under **Advanced**.
+The navy-and-gold sidebar groups **Your wealth**, **Stock research**, and **Workspace**.
+The selected page stays highlighted during interactions. There is one outer sidebar scroll,
+with all destinations available; the navigation has no small inner scrolling list.
+Personalisation, storage status and the glossary sit below navigation. Pages open directly
+on their content; only Dashboard shows the welcome and wealth summary.
+
+Streamlit **1.52 or later** is required for the built-in cookie script. Remember-me tokens
+are signed and saved as browser cookies after login. Existing signed URL tokens are migrated
+to cookies and removed from the address bar; new logins do not put credentials in URLs.
 
 ## Local check (simulates Cloud cwd)
 

@@ -50,10 +50,12 @@ def load_wealth_snapshot(
             [],
         )
 
-    today_change, today_pct = _today_change(portfolio_path, summary, comparison)
+    today_change, today_pct = (
+        _today_change(portfolio_path, summary, comparison) if refresh_prices else (None, None)
+    )
     reports: list[PeerComparisonReport] = []
     try:
-        reports = load_mf_peer_reports(portfolio_path, sync_master=False)
+        reports = load_mf_peer_reports(portfolio_path, sync_master=False, allow_network=refresh_prices)
     except Exception:
         reports = []
 
@@ -78,24 +80,24 @@ def plain_english_insights(reports: list[PeerComparisonReport], limit: int = 4) 
             beat = int(round(held.percentile_3y))
             if beat >= 50:
                 insights.append(
-                    f"Your <strong>{short_name}</strong> fund beat about "
-                    f"<strong>{beat}%</strong> of its {category} peers over 3 years."
+                    f"Your {short_name} fund beat about "
+                    f"{beat}% of its {category} peers over 3 years."
                 )
             else:
                 insights.append(
-                    f"Your <strong>{short_name}</strong> fund trailed most {category} peers "
-                    f"over 3 years (around the <strong>{beat}</strong>th percentile)."
+                    f"Your {short_name} fund trailed most {category} peers "
+                    f"over 3 years (around the {beat}th percentile)."
                 )
         elif held.cagr_3y is not None:
             insights.append(
-                f"<strong>{short_name}</strong> returned about "
-                f"<strong>{held.cagr_3y * 100:.1f}%</strong> per year over the last 3 years."
+                f"{short_name} returned about "
+                f"{held.cagr_3y * 100:.1f}% per year over the last 3 years."
             )
         if len(insights) >= limit:
             break
     if not insights and reports:
         insights.append(
-            "Your mutual funds are loaded — open **My mutual funds** or **MF peers** in the menu."
+            "Your mutual funds are loaded — open My mutual funds or Compare funds in the menu."
         )
     return insights[:limit]
 

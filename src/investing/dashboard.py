@@ -79,6 +79,13 @@ def main() -> None:
         _run_dashboard()
     except Exception as error:  # noqa: BLE001 — show friendly message, not traceback
         render_friendly_error(friendly_runtime_error(error))
+    finally:
+        # Also save writes made during this run (including before st.rerun).
+        # Never push local data until the initial cloud pull has succeeded.
+        if st.session_state.get("_cloud_pulled"):
+            state = sync_session_cloud_data(default_work_dir())
+            if state.mode.value == "cloud_degraded":
+                st.warning(state.message)
 
 
 def _run_dashboard() -> None:
@@ -95,20 +102,20 @@ def _run_dashboard() -> None:
     persistence = sync_session_cloud_data(work_dir)
 
     with st.sidebar:
-        st.markdown('<div class="royal-sidebar-name">', unsafe_allow_html=True)
-        stored_name = prefs.get_display_name()
-        name = st.text_input(
-            "Your name (optional)",
-            value=stored_name,
-            placeholder="Your name",
-            key="royal_display_name",
-            label_visibility="collapsed",
+        st.markdown(
+            '<div class="royal-sidebar-brand"><strong>Wealth home</strong>'
+            '<p>Your investments, clearly.</p></div>', unsafe_allow_html=True,
         )
-        st.markdown("</div>", unsafe_allow_html=True)
-        if name != stored_name:
-            prefs.set_display_name(name)
-
         active_section = render_sidebar_section_menu()
+        st.divider()
+        with st.expander("Personalise your dashboard"):
+            stored_name = prefs.get_display_name()
+            name = st.text_input(
+                "Your name (optional)", value=stored_name,
+                placeholder="Your name", key="royal_display_name",
+            )
+            if name != stored_name:
+                prefs.set_display_name(name)
     database_path = Path(database_path)
     portfolio_path = Path(portfolio_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,35 +128,36 @@ def _run_dashboard() -> None:
         "research_views": [],
     }
 
-    render_welcome_header(name.strip())
-    st.markdown(
-        '<p class="royal-disclaimer">For your information only — not investment advice.</p>',
-        unsafe_allow_html=True,
-    )
-    render_data_persistence_badge(persistence)
-    render_term_glossary()
+    with st.sidebar:
+        with st.expander("Storage & help"):
+            render_data_persistence_badge(persistence)
+            render_term_glossary()
+        st.caption("For tracking and research. Not investment advice.")
 
-    try:
-        wealth, _summary, peer_reports = load_wealth_snapshot(
-            portfolio_path,
-            database_path,
-            refresh_prices=False,
-        )
-    except Exception as error:  # noqa: BLE001
-        render_friendly_error(friendly_runtime_error(error))
-        from .wealth_insights import WealthSnapshot
+    from .onboarding_ui import portfolio_contains_demo_data
 
-        wealth = WealthSnapshot(None, None, None, None, None, False)
-        peer_reports = []
-
-    insights = plain_english_insights(peer_reports)
+    if active_section in {"Dashboard", "Portfolio", "My mutual funds", "MF peers"} and portfolio_contains_demo_data(portfolio_path):
+        st.info("This portfolio includes demo holdings and illustrative prices. Import your own stock and mutual fund files to replace them.")
 
     if active_section == "Dashboard":
-        st.markdown(
-            '<h3 class="royal-section-title">Dashboard</h3>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Your totals and plain-English highlights.")
+        render_welcome_header(name.strip())
+        try:
+            wealth, _summary, peer_reports = load_wealth_snapshot(
+                portfolio_path,
+                database_path,
+                refresh_prices=False,
+            )
+        except Exception as error:  # noqa: BLE001
+            render_friendly_error(friendly_runtime_error(error))
+            from .wealth_insights import WealthSnapshot
+
+            wealth = WealthSnapshot(None, None, None, None, None, False)
+            peer_reports = []
+
+        insights = plain_english_insights(peer_reports)
+        if wealth.has_portfolio and not insights:
+            insights = ["Your holdings are loaded. Open Portfolio for details or Compare funds for fund comparisons."]
+
         render_wealth_hero(
             total_value=wealth.total_value,
             total_pnl=wealth.total_pnl,
@@ -158,6 +166,21 @@ def _run_dashboard() -> None:
             today_change_pct=wealth.today_change_pct,
             insights=insights,
         )
+        if not wealth.has_portfolio:
+            st.markdown("**Start with a sample portfolio or add your own holdings.**")
+            from .onboarding_ui import _load_demo_portfolio
+            from .sidebar_nav import _select_section
+
+            left, right = st.columns(2)
+            left.button(
+                "Try demo portfolio", key="dashboard_demo", type="primary",
+                use_container_width=True, on_click=_load_demo_portfolio,
+                args=(portfolio_path, prefs),
+            )
+            right.button(
+                "Add my holdings", key="dashboard_import", use_container_width=True,
+                on_click=_select_section, args=("Import & backup",),
+            )
     elif active_section == "Portfolio":
         _render_portfolio(portfolio_path, database_path, prefs)
     elif active_section == "My mutual funds":
@@ -172,8 +195,8 @@ def _run_dashboard() -> None:
         if store is None:
             render_empty_state(
                 "⚙️",
-                "Profile review needs research data",
-                "Open **Snapshots** or **Run research** in the sidebar menu.",
+                "Scoring settings need research data",
+                "Open **Saved research** or **Run research** in the sidebar menu.",
             )
         else:
             _render_profile_review(database_path, store)
@@ -197,7 +220,7 @@ def _run_dashboard() -> None:
         render_database_backup_panel(database_path, portfolio_path)
         from .cloud_persistence_ui import render_cloud_database_guide
 
-        render_cloud_database_guide(expanded=True)
+        render_cloud_database_guide(expanded=False)
     elif active_section == "About":
         render_about_section()
 
@@ -207,7 +230,7 @@ def _render_snapshots_tab(
     store: ResearchStore | None,
     options: dict[str, list],
 ) -> None:
-    st.markdown('<h3 class="royal-section-title">Research snapshots</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 class="royal-section-title">Saved research</h3>', unsafe_allow_html=True)
     st.caption("Long-term stock scores from the walk-forward research pipeline.")
 
     symbol = st.selectbox(
@@ -283,12 +306,11 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         key="portfolio_benchmark",
         help=TERM_HELP["benchmark"],
     )
-    refresh = st.checkbox(
-        "Update live prices and fund values",
-        value=True,
-        key="portfolio_refresh",
-        help="Turn off if the page feels slow; we will use the last saved prices.",
+    refresh = st.button(
+        "Update prices & charts", key="portfolio_refresh",
+        help="Downloads current prices and history. This can take a minute; otherwise we use saved values.",
     )
+    st.caption("Showing saved values. Update prices & charts when you need fresh market data.")
     research_db = research_path if research_path.exists() else None
     try:
         summary, comparison = load_portfolio_summary(
@@ -300,6 +322,15 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
     except Exception as error:  # noqa: BLE001
         render_friendly_error(friendly_runtime_error(error))
         return
+
+    comparison_key = (str(portfolio_path.resolve()), benchmark_index)
+    cache = st.session_state.setdefault("_portfolio_comparisons", {})
+    if refresh and comparison is not None:
+        cache[comparison_key] = (portfolio_path.stat().st_mtime_ns, comparison)
+    elif comparison_key in cache:
+        modified, cached_comparison = cache[comparison_key]
+        if modified == portfolio_path.stat().st_mtime_ns:
+            comparison = cached_comparison
 
     columns = st.columns(4)
     columns[0].metric(
@@ -381,13 +412,13 @@ def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
     from .portfolio_dashboard_data import load_portfolio_summary
 
     summary, _ = load_portfolio_summary(portfolio_path, None, refresh_prices=False)
-    reports = load_mf_peer_reports(portfolio_path, sync_master=False)
+    reports = load_mf_peer_reports(portfolio_path, sync_master=False, allow_network=False)
     if not summary.mutual_funds.empty:
         render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
 
 
 def _render_mf_peers_section(portfolio_path: Path) -> None:
-    st.markdown('<h3 class="royal-section-title">MF peers</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 class="royal-section-title">Compare funds</h3>', unsafe_allow_html=True)
     st.caption("Compare your funds with others in the same SEBI category.")
     if not portfolio_path.exists() or not portfolio_has_data(portfolio_path):
         render_empty_state(
@@ -738,13 +769,13 @@ def _render_calibration_tables(report) -> None:
 
 
 def _render_orchestration_runs(database_path: Path) -> None:
-    st.subheader("Universe orchestration runs")
+    st.subheader("Research run history")
     runs = orchestration_runs(database_path)
     if runs.empty:
         render_empty_state(
             "🗂️",
             "No research runs logged yet",
-            "Open the Snapshots tab or use Run research in Advanced.",
+            "Open Saved research or Run research in the sidebar.",
         )
         return
     st.dataframe(runs, use_container_width=True, hide_index=True)

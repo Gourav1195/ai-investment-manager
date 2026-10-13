@@ -25,6 +25,9 @@ def require_app_password() -> None:
     if not expected:
         return
     if st.session_state.get("app_password_ok"):
+        token = st.session_state.get("_remember_token")
+        if token:
+            write_remember_cookie(token)
         return
 
     if _try_restore_remembered_session(expected):
@@ -53,6 +56,9 @@ def _try_restore_remembered_session(expected: str) -> bool:
     if isinstance(query, list):
         query = query[0] if query else None
     if query and _verify_token_safe(str(query), expected):
+        st.session_state["_remember_token"] = str(query)
+        write_remember_cookie(str(query))
+        del st.query_params[QUERY_PARAM]
         return True
 
     cookie_token = read_remember_cookie()
@@ -73,11 +79,7 @@ def _persist_remember_token(expected: str) -> None:
         token = mint_remember_token(expected)
     except Exception:
         return
-    try:
-        st.query_params[QUERY_PARAM] = token
-    except Exception:
-        pass
-    write_remember_cookie(token)
+    st.session_state["_remember_token"] = token
 
 
 def _configured_password() -> str | None:

@@ -54,6 +54,11 @@ def _load_demo_portfolio(portfolio_path: Path, prefs: AppPreferences) -> None:
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
     store = PortfolioStore(portfolio_path)
     load_example_portfolio(store)
+    # Illustrative values make the demo usable without any live API requests.
+    from .portfolio_pricing import cache_stock_prices, cache_navs
+
+    cache_stock_prices(store, {"RELIANCE": 2600.0, "INFY": 1500.0, "HDFCBANK": 1700.0}, price_date="2026-10-08")
+    cache_navs(store, {"119063": 900.0, "122639": 80.0}, nav_date="2026-10-08")
     prefs.set_onboarding_complete(True)
 
 
@@ -80,3 +85,13 @@ def render_first_run_wizard(
 ) -> bool:
     render_portfolio_empty_state(portfolio_path, prefs)
     return True
+
+
+def portfolio_contains_demo_data(path: Path) -> bool:
+    if not path.exists():
+        return False
+    store = PortfolioStore(path)
+    return any(
+        not frame.empty and frame["source"].eq("example").any()
+        for frame in (store.list_equity_holdings(), store.list_mf_holdings())
+    )

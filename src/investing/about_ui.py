@@ -43,6 +43,11 @@ def _render_about_body() -> None:
         "with plain-English summaries, charts, and comparisons. "
         "You never need the command line."
     )
+    st.markdown(
+        "**Start here:** choose Dashboard → Try demo portfolio, or Import & backup → "
+        "upload your holdings. Then open Portfolio or My mutual funds. "
+        "Stock research is optional."
+    )
     st.markdown("### What you can do here")
     _render_feature_mind_map()
     st.markdown("### How it works (step by step)")
@@ -51,7 +56,7 @@ def _render_about_body() -> None:
     st.markdown(
         """
 - **Your data** — uploads are saved in a local database on the app server. On Streamlit Cloud,
-  set **DATABASE_URL** in secrets for cloud saving, or use **Backup / restore** in the sidebar.
+  set **DATABASE_URL** in secrets for cloud saving, or use **Import & backup** in the sidebar.
 - **Read-only** — we only read Console exports and public market data. **We never place orders**
   or log in to your Zerodha account.
 - **Public data sources** — mutual fund data from [AMFI](https://www.amfiindia.com/) and

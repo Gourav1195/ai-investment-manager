@@ -52,7 +52,7 @@ def load_portfolio_summary(
         research_store=research_store,
     )
     trades = store.list_equity_trades()
-    history = estimate_portfolio_history(store, trades)
+    history = estimate_portfolio_history(store, trades) if refresh_prices else pd.DataFrame()
     comparison = None
     if not history.empty:
         try:
@@ -95,9 +95,10 @@ def load_mf_peer_reports(
     portfolio_database: str | Path,
     *,
     sync_master: bool = False,
+    allow_network: bool = True,
 ) -> list[PeerComparisonReport]:
     store = PortfolioStore(portfolio_database)
-    client = MfNavClient(store)
+    client = MfNavClient(store, allow_network=allow_network)
     return compare_portfolio_mutual_funds(
         store,
         client=client,

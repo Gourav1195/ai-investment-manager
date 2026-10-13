@@ -166,7 +166,7 @@ def push_cloud_blobs(work_dir: Path, *, url: str | None = None) -> PersistenceSt
         logger.exception("Cloud database push failed")
         return PersistenceState(
             PersistenceMode.CLOUD_DEGRADED,
-            "Could not save to your cloud database. Download a backup from Advanced.",
+            "Could not save to your cloud database. Download a backup from Import & backup.",
         )
 
     from sqlalchemy import text
@@ -188,6 +188,7 @@ def push_cloud_blobs(work_dir: Path, *, url: str | None = None) -> PersistenceSt
                             payload = EXCLUDED.payload,
                             sha256 = EXCLUDED.sha256,
                             updated_at = EXCLUDED.updated_at
+                        WHERE investing_app_blobs.sha256 <> EXCLUDED.sha256
                         """
                     ),
                     {"name": blob_name, "payload": payload, "sha256": sha},
@@ -196,7 +197,7 @@ def push_cloud_blobs(work_dir: Path, *, url: str | None = None) -> PersistenceSt
         logger.exception("Cloud database push failed")
         return PersistenceState(
             PersistenceMode.CLOUD_DEGRADED,
-            "Could not save to your cloud database. Download a backup from Advanced.",
+            "Could not save to your cloud database. Download a backup from Import & backup.",
         )
 
     return PersistenceState(PersistenceMode.CLOUD, None)
@@ -218,17 +219,17 @@ def sync_session_cloud_data(work_dir: Path) -> PersistenceState:
 
     if not st.session_state.get(flag):
         state = pull_cloud_blobs(work_dir, url=url)
-        st.session_state[flag] = True
         st.session_state["_cloud_persistence_state"] = state
+        if state.mode == PersistenceMode.CLOUD_DEGRADED:
+            return state
+        st.session_state[flag] = True
     else:
         state = st.session_state.get(
             "_cloud_persistence_state",
             PersistenceState(PersistenceMode.CLOUD),
         )
 
-    if state.mode == PersistenceMode.CLOUD_DEGRADED:
-        return state
-
+    # A failed push is retried on the next interaction with the same local files.
     hashes: dict[str, str] = {}
     for _blob, filename in _BLOB_FILES.items():
         path = work_dir / filename

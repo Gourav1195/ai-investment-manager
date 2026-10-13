@@ -33,6 +33,11 @@ html, body, [class*="css"] {
   font-size: 17px;
 }
 
+[data-testid="stMainBlockContainer"] {
+  padding-top: 3.5rem;
+  padding-bottom: 2rem;
+}
+
 [data-testid="stMetricValue"] {
   font-size: 1.35rem !important;
 }
@@ -242,29 +247,60 @@ h1, h2, h3, .royal-title {
   color: var(--royal-cream);
 }
 
-.royal-sidebar-nav-title {
-  font-family: "Playfair Display", serif;
-  color: var(--royal-gold-soft);
-  font-size: 1rem;
+/* Sidebar navigation uses the same spacing, colour and radius tokens as cards. */
+[data-testid="stSidebarUserContent"] { padding: 1.25rem 1rem; }
+.royal-sidebar-brand { padding: 0 0.65rem 0.6rem; }
+.royal-sidebar-brand strong {
+  color: var(--royal-cream);
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+.royal-sidebar-brand p {
+  color: var(--royal-muted);
+  font-size: 0.85rem;
+  margin: 0.2rem 0 0;
+}
+.royal-nav-group {
+  color: var(--royal-muted);
+  font-size: 0.72rem;
   font-weight: 600;
-  margin: 0.5rem 0 0.25rem 0;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin: 0.8rem 0.65rem 0.2rem;
 }
-
-.royal-sidebar-name input {
-  font-size: 0.9rem !important;
-  padding: 0.35rem 0.5rem !important;
-  min-height: 2rem !important;
-}
-
-section[data-testid="stSidebar"] div[data-testid="stRadio"] {
-  max-height: 15rem;
-  overflow-y: auto;
-  padding-right: 0.25rem;
-}
-
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label p {
-  font-size: 0.95rem;
+.st-key-royal_navigation[data-testid="stVerticalBlock"],
+.st-key-royal_navigation [data-testid="stVerticalBlock"] { gap: 0.2rem; }
+.st-key-royal_navigation button[data-testid^="stBaseButton"] {
+  justify-content: flex-start;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--royal-muted);
   font-weight: 500;
+}
+.st-key-royal_navigation button[data-testid^="stBaseButton"] > div {
+  justify-content: flex-start;
+}
+.st-key-royal_navigation button[data-testid^="stBaseButton"] p {
+  font-size: 0.93rem;
+  text-align: left;
+}
+.st-key-royal_navigation button[data-testid^="stBaseButton"]:hover {
+  background: rgba(184, 178, 200, 0.08);
+  color: var(--royal-cream);
+  border-color: rgba(184, 178, 200, 0.15);
+}
+.st-key-royal_navigation button[data-testid^="stBaseButton"][kind="primary"] {
+  background: rgba(212, 175, 55, 0.13);
+  color: var(--royal-gold-soft);
+  border-color: rgba(212, 175, 55, 0.3);
+  box-shadow: inset 3px 0 0 var(--royal-gold);
+}
+.st-key-royal_navigation button[data-testid^="stBaseButton"]:focus-visible {
+  outline: 2px solid var(--royal-gold-soft);
+  outline-offset: 2px;
 }
 
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -283,6 +319,8 @@ section[data-testid="stSidebar"] div[data-testid="stRadio"] label p {
 
 @media (max-width: 768px) {
   html, body, [class*="css"] { font-size: 16px; }
+  [data-testid="stMainBlockContainer"] { padding-top: 3.5rem; }
+  .st-key-royal_navigation button[data-testid^="stBaseButton"] { min-height: 2.75rem; }
   .royal-hero { padding: 1rem; }
   .royal-metric-value { font-size: 1.25rem; }
   .royal-metric-grid { grid-template-columns: 1fr 1fr; }
@@ -304,11 +342,11 @@ PLOTLY_LAYOUT = {
 
 
 def apply_royal_theme() -> None:
-    st.markdown(ROYAL_CSS, unsafe_allow_html=True)
+    st.html(ROYAL_CSS)
 
 
 def render_welcome_header(display_name: str) -> None:
-    greeting = f"Welcome back, {display_name}" if display_name else "Welcome to your wealth home"
+    greeting = f"Welcome back, {_esc(display_name)}" if display_name else "Welcome to your wealth home"
     st.markdown(
         f"""
         <div class="royal-welcome">
@@ -334,7 +372,7 @@ def render_wealth_hero(
     xirr_html = f"{xirr * 100:.2f}%" if xirr is not None else "—"
     today_html, today_class = _signed_money(today_change, today_change_pct)
 
-    insight_items = "".join(f"<li>{item}</li>" for item in insights) if insights else (
+    insight_items = "".join(f"<li>{_esc(item)}</li>" for item in insights) if insights else (
         "<li>Load your portfolio or try the demo to see personalised insights here.</li>"
     )
 
