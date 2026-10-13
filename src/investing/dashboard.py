@@ -376,6 +376,7 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         hide_index=True,
     )
     _render_mf_xirr_and_sips(summary)
+    _render_capital_gains_section(portfolio_path, summary)
     st.markdown("**Combined allocation**")
     st.dataframe(
         format_holdings_table(summary.combined),
@@ -425,6 +426,54 @@ def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
     if not summary.mutual_funds.empty:
         render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
     _render_mf_xirr_and_sips(summary)
+
+
+def _render_capital_gains_section(portfolio_path: Path, summary) -> None:
+    from .portfolio_capital_gains import TAX_DISCLAIMER, build_capital_gains_report
+    from .portfolio_store import PortfolioStore
+
+    store = PortfolioStore(portfolio_path)
+    stock_prices = {
+        str(row["identifier"]): float(row["market_price"])
+        for row in summary.equity.to_dict(orient="records")
+        if row.get("market_price") is not None
+    }
+    navs = {
+        str(row.get("scheme_code") or ""): float(row["market_price"])
+        for row in summary.mutual_funds.to_dict(orient="records")
+        if row.get("market_price") is not None and row.get("scheme_code")
+    }
+    categories: dict[str, str] = {}
+    for row in summary.mutual_funds.to_dict(orient="records"):
+        code = str(row.get("scheme_code") or "").strip()
+        if not code:
+            continue
+        meta = store.get_scheme_meta(code)
+        if meta.get("category"):
+            categories[code] = str(meta["category"])
+    report = build_capital_gains_report(
+        store,
+        stock_prices=stock_prices,
+        navs=navs,
+        scheme_categories=categories,
+    )
+    if report["realized"].empty and report["unrealized"].empty:
+        return
+    st.markdown("**Gains (FIFO)**")
+    st.caption(TAX_DISCLAIMER)
+    if not report["unrealized"].empty:
+        st.markdown("*Unrealized (mark-to-market)*")
+        st.dataframe(report["unrealized"], use_container_width=True, hide_index=True)
+    if not report["realized"].empty:
+        st.markdown("*Realized (from sells/redemptions)*")
+        st.dataframe(report["realized"], use_container_width=True, hide_index=True)
+    if not report["fiscal_year_estimates"].empty:
+        st.markdown("**Estimated tax by financial year (equity rates only)**")
+        st.dataframe(
+            report["fiscal_year_estimates"],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def _render_mf_xirr_and_sips(summary) -> None:
