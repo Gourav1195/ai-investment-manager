@@ -29,21 +29,12 @@ def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not compact:
-        from .onboarding_ui import _load_demo_portfolio
-        from .app_preferences import AppPreferences
-        from .repo_bootstrap import default_work_dir
-
-        prefs = AppPreferences(default_work_dir() / "ui_prefs.json")
+        from .portfolio_start import use_demo_portfolio
 
         st.button(
-            "Try demo portfolio (no files needed)",
-            type="primary",
-            use_container_width=True,
-            key="portfolio_load_examples",
-            disabled=portfolio_has_data(portfolio_path),
-            help="Demo is available before you add holdings, so it cannot replace your portfolio.",
-            on_click=_load_demo_portfolio,
-            args=(portfolio_path, prefs),
+            "View demo portfolio", width="stretch", key="portfolio_load_examples",
+            on_click=use_demo_portfolio,
+            help="The demo is separate and does not replace your holdings.",
         )
 
     st.markdown("**Upload from Zerodha Console**")

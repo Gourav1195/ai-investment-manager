@@ -96,3 +96,9 @@ def render_connect_portfolio(personal_path: Path) -> None:
         st.session_state.pop("home_setup", None)
         st.session_state["portfolio_notice"] = f"Connected: loaded {counts[0]} stock holdings and {counts[1]} mutual fund holdings."
         st.rerun()
+
+
+def use_demo_portfolio() -> None:
+    st.session_state["portfolio_source"] = "Demo portfolio"
+    st.session_state.pop("home_setup", None)
+    st.session_state["active_section"] = "Dashboard"

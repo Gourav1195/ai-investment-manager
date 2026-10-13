@@ -161,3 +161,16 @@ def test_broker_isin_is_not_sent_as_public_amfi_code(tmp_path):
     with pytest.raises(ValueError):
         MfNavClient(PortfolioStore(tmp_path/'portfolio.db'),session=session).sync_scheme_nav('INF000000001')
     session.get.assert_not_called()
+
+
+def test_view_demo_preserves_personal_holdings(monkeypatch, tmp_path):
+    from src.investing.portfolio_start import use_demo_portfolio, selected_portfolio_path
+    from src.investing.portfolio_store import PortfolioStore
+    from src.investing.portfolio_service import import_equity_holdings_file, EXAMPLES_DIR
+    real = tmp_path/'portfolio.db'
+    import_equity_holdings_file(PortfolioStore(real), EXAMPLES_DIR/'equity_holdings.example.csv')
+    before = real.read_bytes()
+    monkeypatch.setattr(st, 'session_state', {'portfolio_source': 'My portfolio'})
+    use_demo_portfolio()
+    assert selected_portfolio_path(real, tmp_path) != real
+    assert real.read_bytes() == before
