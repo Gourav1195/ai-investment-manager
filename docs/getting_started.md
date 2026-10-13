@@ -4,20 +4,20 @@ You can use this app from your browser. You do not need Python, database setting
 
 ## Try it first
 
-1. Open Dashboard and click **Try demo portfolio**. These are sample holdings with illustrative prices, not your investments or live quotes.
+1. Open Dashboard. **Demo portfolio** is selected automatically if you have not added real holdings. These are sample holdings with illustrative prices, not your investments or live quotes.
 2. Open **Portfolio** to see stocks, mutual funds, invested amounts and profit or loss.
 3. Open **My mutual funds** for fund charts, or **Compare funds** to compare funds in the same category.
 
 ## Add your own holdings
 
 1. Open Zerodha Console and download your stock and mutual fund holdings as CSV or Excel files.
-2. Open **Import & backup** in this app and upload each file into its matching box.
+2. On Dashboard click **Upload my portfolio**, then upload each file into its matching box.
 3. Optionally upload your trade history. It helps calculate annual returns and portfolio history.
 4. Return to **Dashboard** or **Portfolio** to see your investments.
 
 A holdings upload replaces the holdings of that type. A trade-history upload replaces the previous
 trade history, so upload the full period you want to analyse. Download a backup first if you want
-to keep the previous version. Avoid trying the demo over your own holdings; the demo replaces them.
+to keep the previous version. The default demo is kept in its own database. Switching to the demo does not replace your real holdings.
 
 ## Find and compare funds
 
@@ -53,3 +53,23 @@ no separate personal accounts. It reads files and public data and does not place
 You can ignore this group when you only want to track holdings. **Run research** creates scores,
 **Saved research** shows saved results, **Scoring settings** manages scoring rules, and **Research runs**
 shows research-run history. Scores help organise research and are not buy or sell instructions.
+
+
+## Connect instead of uploading
+
+Choose **Connect Zerodha** on Dashboard. The read-only connection needs a Kite Connect API key
+and a current access token. Credentials are used for that sync and are not saved to files or the
+cloud database. If you do not have them, use **Upload my portfolio** with Console exports.
+This connection loads stock and fund holdings; trade history still comes from your Console export.
+
+## Stay signed in
+
+Leave **Remember me for 30 days** selected when you sign in. A signed token is stored in your
+browser and verified again after refresh. Cookies and browser storage are supported; the password
+itself is never saved. Clearing browser data, changing the app password or token expiry requires
+another sign-in. Private browsing or blocked browser storage can prevent persistence.
+
+
+Connected Coin holdings retain their broker ISIN and last available value. Fund-history and peer
+charts require a numeric AMFI scheme code; a unique match in the cached fund list is used when
+available. Stock and fund quantities are not sent to public fund-data services.

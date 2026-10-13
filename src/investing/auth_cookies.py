@@ -44,11 +44,7 @@ def write_remember_cookie(token: str) -> None:
     var secure = window.location.protocol === "https:" ? "; Secure" : "";
     var cookie = name + "=" + encodeURIComponent(value)
       + "; path=/; max-age=" + maxAge + "; SameSite=Lax" + secure;
-    var targets = [document, window.parent && window.parent.document];
-    for (var i = 0; i < targets.length; i++) {{
-      var doc = targets[i];
-      if (doc) doc.cookie = cookie;
-    }}
+    document.cookie = cookie;
   }} catch (e) {{}}
 }})();
 </script>

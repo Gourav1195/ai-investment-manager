@@ -30,13 +30,14 @@ def render_portfolio_empty_state(portfolio_path: Path, prefs: AppPreferences) ->
         except Exception:
             pass
 
+    from .portfolio_start import use_demo_portfolio
+
     st.button(
-        "Try demo portfolio (sample data)",
+        "View demo portfolio",
         type="primary",
         use_container_width=True,
         key="portfolio_demo_button",
-        on_click=_load_demo_portfolio,
-        args=(portfolio_path, prefs),
+        on_click=use_demo_portfolio,
     )
 
     from .portfolio_cloud_ui import render_portfolio_import_panel

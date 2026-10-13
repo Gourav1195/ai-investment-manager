@@ -50,6 +50,8 @@ class MfNavClient:
 
     def sync_scheme_nav(self, scheme_code: str, *, force: bool = False) -> SchemeNavSeries:
         code = str(scheme_code).strip()
+        if not code.isdigit():
+            raise ValueError("Fund history requires an AMFI scheme code. This holding is identified by its broker ISIN.")
         if not force and self.store.has_nav_history(code):
             return self._series_from_store(code)
         if not self.allow_network:

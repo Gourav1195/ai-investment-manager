@@ -7,6 +7,7 @@ import os
 import streamlit as st
 
 from .auth_cookies import read_remember_cookie, write_remember_cookie
+from .auth_browser import render_browser_auth
 from .auth_remember import QUERY_PARAM, mint_remember_token, verify_remember_token
 from .cloud_persistence import is_cloud_persistence_configured
 
@@ -28,14 +29,26 @@ def require_app_password() -> None:
         token = st.session_state.get("_remember_token")
         if token:
             write_remember_cookie(token)
+        render_browser_auth(token=token, clear=bool(st.session_state.get("_clear_remembered_auth")))
         return
 
     if _try_restore_remembered_session(expected):
         st.session_state["app_password_ok"] = True
+        render_browser_auth(token=st.session_state.get("_remember_token"))
         return
 
+    known = st.session_state.get("_wealth_browser_auth", {}).get("storage") or {}
+    known_token = known.get("token")
+    reject = bool(known_token and not _verify_token_safe(str(known_token), expected))
+    storage = render_browser_auth(clear=reject)
+    browser_token = storage.get("token") if storage else None
+    if browser_token and _verify_token_safe(str(browser_token), expected):
+        st.session_state["app_password_ok"] = True
+        st.session_state["_remember_token"] = str(browser_token)
+        st.rerun()
+
     st.subheader("Sign in")
-    st.caption("This app is private. Enter the password from Streamlit secrets.")
+    st.caption("Sign in to your private wealth dashboard. Your remembered session is restored automatically.")
     with st.form("app_password_form", clear_on_submit=False):
         entered = st.text_input("Password", type="password")
         remember = st.checkbox("Remember me for 30 days", value=True)
@@ -45,6 +58,10 @@ def require_app_password() -> None:
             st.session_state["app_password_ok"] = True
             if remember:
                 _persist_remember_token(expected)
+                st.session_state["_clear_remembered_auth"] = False
+            else:
+                st.session_state.pop("_remember_token", None)
+                st.session_state["_clear_remembered_auth"] = True
             st.rerun()
         else:
             st.error("Incorrect password.")
@@ -63,6 +80,7 @@ def _try_restore_remembered_session(expected: str) -> bool:
 
     cookie_token = read_remember_cookie()
     if cookie_token and _verify_token_safe(cookie_token, expected):
+        st.session_state["_remember_token"] = cookie_token
         return True
     return False
 
