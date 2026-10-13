@@ -76,7 +76,13 @@ def format_holdings_table(frame: pd.DataFrame) -> pd.DataFrame:
         display["pnl_pct"] = display["pnl_pct"].map(_pct)
     if "allocation_pct" in display.columns:
         display["allocation_pct"] = display["allocation_pct"].map(_pct)
-    return display
+    return display.rename(columns={
+        "asset_class": "Type", "identifier": "Code", "name": "Holding",
+        "quantity": "Units / shares", "average_cost": "Average buy price",
+        "market_price": "Saved price", "invested": "Invested", "current_value": "Value",
+        "pnl": "Profit / loss", "pnl_pct": "Return", "allocation_pct": "Portfolio share",
+        "research_view": "Research rating", "overall_score": "Research score",
+    })
 
 
 def _money(value: object) -> str:
