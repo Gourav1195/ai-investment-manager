@@ -6,9 +6,18 @@ import os
 
 import streamlit as st
 
+from .cloud_persistence import is_cloud_persistence_configured
+
 
 def require_app_password() -> None:
     """Stop the app until the user enters ``APP_PASSWORD`` when configured."""
+
+    if is_cloud_persistence_configured() and not _configured_password():
+        st.error(
+            "Cloud database is enabled (DATABASE_URL) but APP_PASSWORD is missing. "
+            "Add APP_PASSWORD in Streamlit Settings → Secrets, then reboot the app."
+        )
+        st.stop()
 
     expected = _configured_password()
     if not expected:

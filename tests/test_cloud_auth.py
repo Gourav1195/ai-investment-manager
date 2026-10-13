@@ -4,6 +4,7 @@ from src.investing.cloud_auth import _configured_password
 
 
 def test_configured_password_reads_environment(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("APP_PASSWORD", raising=False)
     assert _configured_password() is None
     monkeypatch.setenv("APP_PASSWORD", "secret")

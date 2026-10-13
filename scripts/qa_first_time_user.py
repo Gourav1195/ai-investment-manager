@@ -53,6 +53,10 @@ def _start(work_dir: Path) -> subprocess.Popen[bytes]:
     )
 
 
+sys.path.insert(0, str(ROOT / "scripts"))
+from qa_streamlit_nav import click_sidebar_section as _nav_section  # noqa: E402
+
+
 def _seed_demo_portfolio(work_dir: Path) -> None:
     sys.path.insert(0, str(ROOT))
     from src.investing.app_preferences import AppPreferences
@@ -79,7 +83,7 @@ def main() -> int:
             page = browser.new_page(viewport={"width": 390, "height": 844})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
             page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
-            page.get_by_role("tab", name="Portfolio").click()
+            _nav_section(page, "Portfolio")
             page.wait_for_selector("text=Step 1 of 2", timeout=120_000)
             page.screenshot(path=str(ARTIFACTS / "first-time-step1-mobile.png"), full_page=True)
 
@@ -96,12 +100,12 @@ def main() -> int:
             page.reload(wait_until="domcontentloaded", timeout=120_000)
             page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
             expect(page.locator('[data-testid="stException"]')).to_have_count(0)
-            page.get_by_role("tab", name="Portfolio").click()
+            _nav_section(page, "Portfolio")
             page.wait_for_selector("text=Money you put in", timeout=120_000)
             expect(page.locator('[data-testid="stException"]')).to_have_count(0)
             page.screenshot(path=str(ARTIFACTS / "first-time-step2-mobile.png"), full_page=True)
 
-            page.get_by_role("tab", name="My Mutual Funds").click()
+            _nav_section(page, "My Mutual Funds")
             page.wait_for_timeout(3000)
             page.screenshot(path=str(ARTIFACTS / "first-time-mf-tab-mobile.png"), full_page=True)
 
@@ -111,10 +115,10 @@ def main() -> int:
             desktop.screenshot(path=str(ARTIFACTS / "first-time-desktop-home.png"), full_page=True)
             expect(desktop.locator('[data-testid="stException"]')).to_have_count(0)
 
-            desktop.get_by_role("button", name="About this app").first.click()
+            _nav_section(desktop, "About")
             desktop.wait_for_timeout(1500)
             desktop.wait_for_selector("text=How it works", timeout=30_000)
-            desktop.screenshot(path=str(ARTIFACTS / "first-time-about-dialog.png"), full_page=True)
+            desktop.screenshot(path=str(ARTIFACTS / "first-time-about-page.png"), full_page=True)
             expect(desktop.locator('[data-testid="stException"]')).to_have_count(0)
 
             browser.close()

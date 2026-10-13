@@ -56,22 +56,19 @@ from .royal_theme import (
     render_welcome_header,
     render_wealth_hero,
 )
+from .cloud_persistence import sync_session_cloud_data
+from .cloud_persistence_ui import (
+    render_cloud_database_guide,
+    render_data_persistence_badge,
+    render_sidebar_persistence_hint,
+)
 from .ui_research import render_database_backup_panel, render_run_research_controls
 from .wealth_insights import load_wealth_snapshot, plain_english_insights
-from .about_ui import render_about_button
+from .about_ui import render_about_section
+from .sidebar_nav import render_sidebar_section_menu
 
 DEFAULT_DATABASE = Path("work/research.db")
 DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
-
-TOP_LEVEL_TABS = (
-    "Wealth at a glance",
-    "Portfolio",
-    "My Mutual Funds",
-    "Top Mutual Funds",
-    "Snapshots",
-    "Profile review",
-    "Orchestration runs",
-)
 
 
 def main() -> None:
@@ -99,6 +96,7 @@ def _run_dashboard() -> None:
     prefs = AppPreferences(work_dir / "ui_prefs.json")
     database_path = default_database
     portfolio_path = default_portfolio
+    persistence = sync_session_cloud_data(work_dir)
 
     with st.sidebar:
         stored_name = prefs.get_display_name()
@@ -110,17 +108,27 @@ def _run_dashboard() -> None:
         )
         if name != stored_name:
             prefs.set_display_name(name)
-        render_about_button(key="sidebar_about_app")
+
+        active_section = render_sidebar_section_menu()
+        st.divider()
+        st.markdown("**Run research**")
+        if render_run_research_controls(database_path, key_prefix="sidebar"):
+            st.rerun()
+        st.markdown("**Backup / restore**")
+        render_database_backup_panel(database_path, portfolio_path)
+        st.divider()
         with st.expander("Quick guide", expanded=False):
             st.markdown(
                 """
-Use the **tabs along the top** — each feature is one click away.  
+Use the **menu above** — every section is one click away.  
 **Snapshots / Profile / Orchestration** — pro stock research tools.  
-**Advanced** below — run research, backups, database paths.
+**Advanced** below — technical database paths only.
                 """
             )
+        render_cloud_database_guide()
+        render_sidebar_persistence_hint()
         with st.expander("Advanced", expanded=False):
-            st.caption("Database paths and backups (usually leave as default).")
+            st.caption("Database file paths (usually leave as default).")
             database_path = Path(
                 st.text_input("Research database", value=str(default_database))
             )
@@ -128,9 +136,6 @@ Use the **tabs along the top** — each feature is one click away.
                 st.text_input("Portfolio database", value=str(default_portfolio))
             )
             database_path.parent.mkdir(parents=True, exist_ok=True)
-            if render_run_research_controls(database_path, key_prefix="sidebar"):
-                st.rerun()
-            render_database_backup_panel(database_path, portfolio_path)
     database_path = Path(database_path)
     portfolio_path = Path(portfolio_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,15 +148,12 @@ Use the **tabs along the top** — each feature is one click away.
         "research_views": [],
     }
 
-    welcome_col, about_col = st.columns([6, 1])
-    with welcome_col:
-        render_welcome_header(name.strip())
-    with about_col:
-        render_about_button(key="header_about_app")
+    render_welcome_header(name.strip())
     st.markdown(
         '<p class="royal-disclaimer">For your information only — not investment advice.</p>',
         unsafe_allow_html=True,
     )
+    render_data_persistence_badge(persistence)
     render_term_glossary()
 
     try:
@@ -169,22 +171,12 @@ Use the **tabs along the top** — each feature is one click away.
 
     insights = plain_english_insights(peer_reports)
 
-    (
-        wealth_tab,
-        portfolio_tab,
-        my_mf_tab,
-        top_mf_tab,
-        snapshots_tab,
-        profile_tab,
-        orchestration_tab,
-    ) = st.tabs(list(TOP_LEVEL_TABS))
-
-    with wealth_tab:
+    if active_section == "Wealth at a glance":
         st.markdown(
             '<h3 class="royal-section-title">Wealth at a glance</h3>',
             unsafe_allow_html=True,
         )
-        st.caption("Your totals and plain-English highlights — open other tabs for detail.")
+        st.caption("Your totals and plain-English highlights — pick another item in the sidebar menu for detail.")
         render_wealth_hero(
             total_value=wealth.total_value,
             total_pnl=wealth.total_pnl,
@@ -193,31 +185,27 @@ Use the **tabs along the top** — each feature is one click away.
             today_change_pct=wealth.today_change_pct,
             insights=insights,
         )
-
-    with portfolio_tab:
+    elif active_section == "Portfolio":
         _render_portfolio(portfolio_path, database_path, prefs)
-
-    with my_mf_tab:
+    elif active_section == "My Mutual Funds":
         _render_my_mutual_funds(portfolio_path)
-
-    with top_mf_tab:
+    elif active_section == "Top Mutual Funds":
         render_top_mutual_funds_tab(portfolio_path)
-
-    with snapshots_tab:
+    elif active_section == "Snapshots":
         _render_snapshots_tab(database_path, store, options)
-
-    with profile_tab:
+    elif active_section == "Profile review":
         if store is None:
             render_empty_state(
                 "⚙️",
                 "Profile review needs research data",
-                "Open the Snapshots tab and run research, or use Run research in Advanced.",
+                "Open Snapshots in the sidebar and run research, or use Run research in the sidebar.",
             )
         else:
             _render_profile_review(database_path, store)
-
-    with orchestration_tab:
+    elif active_section == "Orchestration runs":
         _render_orchestration_runs(database_path)
+    elif active_section == "About":
+        render_about_section()
 
 
 def _render_snapshots_tab(
@@ -251,7 +239,7 @@ def _render_snapshots_tab(
         render_empty_state(
             "📈",
             "No research saved yet",
-            "Run research from the Advanced section in the sidebar, then return here.",
+            "Use Run research in the sidebar, then return here.",
         )
         if render_run_research_controls(database_path, key_prefix="snapshots"):
             st.rerun()
@@ -272,7 +260,7 @@ def _render_snapshots_tab(
         render_empty_state(
             "🔍",
             "No snapshots match your filters",
-            "Adjust filters above or run research again from Advanced.",
+            "Adjust filters above or run research again from the sidebar.",
         )
         if render_run_research_controls(database_path, key_prefix="snapshots_empty"):
             st.rerun()

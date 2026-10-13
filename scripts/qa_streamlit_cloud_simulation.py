@@ -68,11 +68,19 @@ def main() -> int:
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             page.goto(base, wait_until="domcontentloaded", timeout=120_000)
             page.wait_for_selector("text=Wealth at a glance", timeout=120_000)
+            page.wait_for_selector(
+                "text=Temporary session",
+                timeout=30_000,
+            )
+            page.screenshot(
+                path=str(ARTIFACTS / "cloud-persistence-temp-badge.png"),
+                full_page=False,
+            )
 
-            def click_tab(label: str) -> None:
-                page.get_by_role("tab", name=label).click()
+            sys.path.insert(0, str(ROOT / "scripts"))
+            from qa_streamlit_nav import click_sidebar_section as click_section
 
-            click_tab("Portfolio")
+            click_section("Portfolio")
             page.wait_for_timeout(2000)
             page.screenshot(
                 path=str(ARTIFACTS / "cloud-portfolio-step1-guide.png"),
@@ -96,26 +104,26 @@ def main() -> int:
                 full_page=True,
             )
 
-            click_tab("Snapshots")
+            click_section("Snapshots")
             page.wait_for_timeout(1000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-empty.png"), full_page=True)
             page.get_by_role("button", name="Run research").first.click()
             page.wait_for_timeout(15000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-snapshots-after-research.png"), full_page=True)
 
-            click_tab("Profile review")
+            click_section("Profile review")
             page.wait_for_timeout(2000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-profile.png"), full_page=True)
 
-            click_tab("Orchestration runs")
+            click_section("Orchestration runs")
             page.wait_for_timeout(1000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-orchestration.png"), full_page=True)
 
-            click_tab("Top Mutual Funds")
+            click_section("Top Mutual Funds")
             page.wait_for_timeout(2000)
             page.screenshot(path=str(ARTIFACTS / "cloud-tab-top-mf.png"), full_page=True)
 
-            click_tab("My Mutual Funds")
+            click_section("My Mutual Funds")
             page.wait_for_timeout(5000)
             page.screenshot(path=str(ARTIFACTS / "cloud-portfolio-mf-charts.png"), full_page=True)
             browser.close()

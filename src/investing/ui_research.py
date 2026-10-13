@@ -21,6 +21,7 @@ from .demo_research import (
     default_research_as_of,
     synthetic_prices_for_symbols,
 )
+from .cloud_persistence import is_cloud_persistence_configured
 from .orchestration import UniverseResearchOrchestrator, _price_symbols
 from .providers import DataProviderError, NiftyIndexUniverseProvider, YFinancePriceProvider, nifty_benchmark_symbol
 
@@ -191,7 +192,7 @@ def render_run_research_controls(
 ) -> bool:
     st.markdown("**Run research from this page**")
     st.caption(
-        "Builds research snapshots in your database so the tabs above fill in. "
+        "Builds research snapshots in your database so the main views fill in. "
         "Uses a small stock list by default to stay within free hosting limits."
     )
     choice = st.selectbox(
@@ -223,10 +224,17 @@ def render_database_backup_panel(
     portfolio_path: Path,
 ) -> None:
     st.markdown("**Save or restore your data**")
-    st.caption(
-        "On Streamlit Cloud, databases live on temporary disk. Download backups "
-        "after a research run or portfolio import, then upload them in a later session."
-    )
+    if is_cloud_persistence_configured():
+        st.caption(
+            "Cloud database is enabled — your files sync automatically. "
+            "You can still download backups here as an extra safety copy."
+        )
+    else:
+        st.caption(
+            "On Streamlit Cloud, databases live on temporary disk unless you set "
+            "DATABASE_URL in secrets (see sidebar guide). Download backups after "
+            "a research run or portfolio import, then upload them in a later session."
+        )
     col1, col2 = st.columns(2)
     with col1:
         if research_path.exists():
