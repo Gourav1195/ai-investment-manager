@@ -161,7 +161,9 @@ def compare_portfolio_mutual_funds(
         code = record.get("scheme_code")
         if not code or not str(code).strip():
             continue
-        report = compare_held_fund_to_peers(store, str(code), client=client)
+        if client.allow_network is False and not store.has_nav_history(str(code)):
+            continue
+        report = compare_held_fund_to_peers(store, str(code), client=client, sync_master=sync_master)
         if report is not None:
             reports.append(report)
     return reports

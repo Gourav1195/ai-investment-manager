@@ -28,7 +28,7 @@ Do **not** commit these values to GitHub or share them in chat logs.
 4. In Streamlit Cloud, open your app → **Settings** → **Secrets**.
 5. Paste the template above: put the connection string in `DATABASE_URL`, and choose a private `APP_PASSWORD`.
 6. Click **Save**, then **Reboot app** (or trigger a redeploy).
-7. Open the app, sign in with `APP_PASSWORD`, and check the banner: **“Your data is saved in the cloud”**.
+7. Open the app, sign in with `APP_PASSWORD`, and open **Storage & help** in the sidebar and check: **“Your data is saved in the cloud”**.
 8. Upload a sample portfolio or run research once. Reboot the app again — your data should still be there.
 
 ## Step-by-step (Supabase)
@@ -36,11 +36,11 @@ Do **not** commit these values to GitHub or share them in chat logs.
 1. Go to [https://supabase.com](https://supabase.com) and create a project.
 2. Open **Project Settings → Database** and copy the **URI** connection string (mode: Session or Transaction).
 3. Use the same Secrets block as above in Streamlit Cloud.
-4. Save, reboot, and confirm the cloud banner.
+4. Save, reboot, and confirm the cloud status under **Storage & help**.
 
 ## Without cloud database
 
-If you do **not** set `DATABASE_URL`, the app keeps using local **SQLite** files (fine for your laptop). On Streamlit Cloud you will see **“Temporary session”** — use **Backup / restore** in the sidebar to download `.db` backups between sessions.
+If you do **not** set `DATABASE_URL`, the app keeps using local **SQLite** files (fine for your laptop). On Streamlit Cloud you will see **“Temporary session”** — use **Import & backup** in the sidebar to download `.db` backups between sessions.
 
 ## Troubleshooting
 

@@ -3,6 +3,11 @@
 This guide helps you track a personal Zerodha portfolio (stocks in **Kite**, mutual funds in
 **Coin**) inside the India investing module. The tracker is **read-only**: it never places orders.
 
+## Prefer the browser?
+
+For everyday use, follow [Getting started](getting_started.md). The steps below are for
+the person setting up the app locally; your brother does not need these commands.
+
 ## What you need
 
 - Windows 10 or 11 with Python 3.11+ installed
@@ -63,7 +68,7 @@ python -m src.investing.cli dashboard `
   --portfolio-database work\portfolio.db
 ```
 
-Open the URL Streamlit prints (usually `http://localhost:8501`) and select the **Portfolio** tab.
+Open the URL Streamlit prints (usually `http://localhost:8501`) and select the **Portfolio** page.
 
 The tab shows:
 
@@ -99,7 +104,7 @@ Copy `examples\kite.local.json.example` to `work\kite.local.json` and fill in va
 python -m src.investing.cli portfolio sync-kite --database work\portfolio.db
 ```
 
-Re-open or refresh the dashboard **Portfolio** tab.
+Re-open or refresh the dashboard **Portfolio** page.
 
 ## 6. Mutual fund peer comparison
 
@@ -113,7 +118,7 @@ python -m src.investing.cli portfolio mf-peers --database work\portfolio.db `
   --sync-master --output work\mf-peer-summary.csv
 ```
 
-In the dashboard **Portfolio** tab:
+In the dashboard **Portfolio** page:
 
 - Each held mutual fund shows 1Y / 3Y / 5Y CAGR, rolling 1Y median, category rank,
   percentile, category average, and top peers (Direct vs Regular and Growth vs IDCW are kept

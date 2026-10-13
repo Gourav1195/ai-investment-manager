@@ -32,10 +32,11 @@ def render_top_mutual_funds_tab(portfolio_path: Path) -> None:
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
     store = PortfolioStore(portfolio_path)
 
-    sync = st.checkbox(
-        "Refresh fund list from AMFI (recommended once per week)",
-        value=store.scheme_master_count() == 0,
-        key="mf_rank_sync_master",
+    if store.scheme_master_count() == 0:
+        st.info("First, load the fund list. Then choose a category and compare returns.")
+    sync = st.button(
+        "Refresh fund list", key="mf_rank_sync_master",
+        help="Downloads the public AMFI fund list. Refresh about once a week.",
     )
     if sync:
         client = MfNavClient(store)

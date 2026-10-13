@@ -34,11 +34,16 @@ class MfNavClient:
         self,
         store: PortfolioStore,
         session: requests.Session | None = None,
+        *,
+        allow_network: bool = True,
     ) -> None:
         self.store = store
+        self.allow_network = allow_network
         self._session = session or requests.Session()
 
     def sync_scheme_master_from_amfi(self, *, text: str | None = None) -> int:
+        if text is None and not self.allow_network:
+            raise RuntimeError("Fund list is not cached. Refresh it explicitly to download data.")
         payload = text if text is not None else self._session.get(AMFI_NAV_ALL_URL, timeout=90).text
         frame = parse_amfi_nav_all(payload)
         return self.store.replace_scheme_master(frame)
@@ -47,6 +52,8 @@ class MfNavClient:
         code = str(scheme_code).strip()
         if not force and self.store.has_nav_history(code):
             return self._series_from_store(code)
+        if not self.allow_network:
+            raise RuntimeError("Fund history is not cached. Refresh it explicitly to download data.")
         response = self._session.get(MFAPI_SCHEME_URL.format(scheme_code=code), timeout=60)
         response.raise_for_status()
         payload = response.json()

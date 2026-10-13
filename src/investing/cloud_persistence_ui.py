@@ -41,7 +41,7 @@ Click **Save**, then use **Reboot app** (or redeploy).
 When the app loads, you should see **“Your data is saved in the cloud”** near the top.
 Upload a portfolio or run research once; after a reboot, your data should still be there.
 
-**Fallback:** you can still use **Advanced → Save or restore your data** to download `.db` files anytime.
+**Fallback:** you can still use **Import & backup → Save or restore your data** to download `.db` files anytime.
 """
 
 

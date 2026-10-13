@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import tempfile
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -12,6 +13,8 @@ from typing import Callable, Iterable
 
 import pandas as pd
 import streamlit as st
+
+from .upload_state import needs_processing, mark_processed
 
 from .constituents import ConstituentHistoryStore
 from .demo_research import (
@@ -262,18 +265,49 @@ def render_database_backup_panel(
     up1, up2 = st.columns(2)
     with up1:
         uploaded = st.file_uploader("Restore research database", type=["db"], key="ul_research_db")
-        if uploaded is not None:
-            research_path.parent.mkdir(parents=True, exist_ok=True)
-            research_path.write_bytes(uploaded.getvalue())
-            st.success("Research database restored.")
-            st.rerun()
+        _restore_uploaded_database(uploaded, research_path, key="ul_research_db", kind="Research")
     with up2:
         uploaded_pf = st.file_uploader("Restore portfolio database", type=["db"], key="ul_portfolio_db")
-        if uploaded_pf is not None:
-            portfolio_path.parent.mkdir(parents=True, exist_ok=True)
-            portfolio_path.write_bytes(uploaded_pf.getvalue())
-            st.success("Portfolio database restored.")
-            st.rerun()
+        _restore_uploaded_database(uploaded_pf, portfolio_path, key="ul_portfolio_db", kind="Portfolio")
+
+
+def _restore_uploaded_database(uploaded, path: Path, *, key: str, kind: str) -> None:
+    if not needs_processing(uploaded, key, path):
+        return
+    try:
+        restore_sqlite_bytes(uploaded.getvalue(), path, kind=kind)
+    except (ValueError, sqlite3.Error, OSError):
+        st.error(f"This is not a valid {kind.lower()} backup. Your existing data has been kept.")
+        return
+    mark_processed(uploaded, key, path)
+    st.success(f"{kind} database restored.")
+    st.rerun()
+
+
+def restore_sqlite_bytes(payload: bytes, path: Path, *, kind: str) -> None:
+    """Validate an uploaded backup before atomically replacing existing data."""
+    if not payload.startswith(b"SQLite format 3\x00"):
+        raise ValueError("Not a SQLite database")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".db", delete=False) as handle:
+            handle.write(payload)
+            temp = Path(handle.name)
+        conn = sqlite3.connect(temp.as_uri() + "?mode=ro", uri=True)
+        try:
+            if conn.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                raise ValueError("Damaged database")
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            required = {"research_snapshots", "research_evaluations"} if kind == "Research" else {"equity_holdings", "mf_holdings"}
+            if not required.issubset(tables):
+                raise ValueError("Wrong backup type")
+        finally:
+            conn.close()
+        os.replace(temp, path)
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def copy_sqlite_backup(source: Path, dest: Path) -> None:

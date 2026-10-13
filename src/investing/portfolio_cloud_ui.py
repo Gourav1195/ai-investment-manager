@@ -8,6 +8,7 @@ import tempfile
 import streamlit as st
 
 from .friendly_copy import friendly_import_error
+from .upload_state import needs_processing, mark_processed
 from .portfolio_service import (
     import_equity_holdings_file,
     import_mf_holdings_file,
@@ -15,6 +16,7 @@ from .portfolio_service import (
     load_example_portfolio,
 )
 from .portfolio_store import PortfolioStore
+from .portfolio_dashboard_data import portfolio_has_data
 
 
 def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False) -> None:
@@ -22,7 +24,7 @@ def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False
 
     if not compact:
         st.markdown("**Add or update your files**")
-        st.caption("Files stay on this device for your current session only.")
+        st.caption("Files are stored by this app. Open Storage & help in the sidebar for backup availability.")
 
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -38,11 +40,14 @@ def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False
             type="primary",
             use_container_width=True,
             key="portfolio_load_examples",
+            disabled=portfolio_has_data(portfolio_path),
+            help="Demo is available before you add holdings, so it cannot replace your portfolio.",
             on_click=_load_demo_portfolio,
             args=(portfolio_path, prefs),
         )
 
     st.markdown("**Upload from Zerodha Console**")
+    st.caption("Each upload replaces the previous holdings or trade history of that type. Download a backup first to keep a copy.")
     if compact:
         _import_upload(
             portfolio_path,
@@ -102,10 +107,11 @@ def _import_upload(
     help: str | None = None,
 ) -> None:
     uploaded = st.file_uploader(label, type=["csv", "xlsx", "xls"], key=key, help=help)
-    if uploaded is None:
+    if not needs_processing(uploaded, key, portfolio_path):
         return
     store = PortfolioStore(portfolio_path)
     suffix = Path(uploaded.name).suffix.lower() or ".csv"
+    temp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
             handle.write(uploaded.getvalue())
@@ -119,7 +125,10 @@ def _import_upload(
         else:
             count = import_mf_holdings_file(store, temp_path)
         st.success(f"Added {count} rows from {uploaded.name}.")
-        temp_path.unlink(missing_ok=True)
+        mark_processed(uploaded, key, portfolio_path)
         st.rerun()
     except Exception as error:  # noqa: BLE001
         st.error(friendly_import_error(kind, str(error)))
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)

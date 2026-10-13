@@ -53,7 +53,7 @@ def write_remember_cookie(token: str) -> None:
 }})();
 </script>
 """,
-            height=0,
+            unsafe_allow_javascript=True,
         )
     except Exception:
         logger.debug("Could not inject remember-me cookie script", exc_info=True)
