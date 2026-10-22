@@ -46,6 +46,7 @@ class PortfolioSummary:
     xirr: float | None
     xirr_note: str | None = None
     mf_fund_xirr: pd.DataFrame | None = None
+    equity_holding_xirr: pd.DataFrame | None = None
     mf_sips: pd.DataFrame | None = None
 
 
@@ -144,6 +145,7 @@ def build_portfolio_summary(
         mf_terminal_value=_sum_column(mf_frame, "current_value"),
     )
     mf_fund_xirr = build_mf_fund_xirr_table(mf_txns, mf_frame)
+    equity_holding_xirr = build_equity_holding_xirr_table(trades, equity_frame)
     mf_sips = list_mf_sip_transactions(mf_txns)
 
     totals = {
@@ -163,6 +165,7 @@ def build_portfolio_summary(
         xirr=xirr,
         xirr_note=xirr_note,
         mf_fund_xirr=mf_fund_xirr,
+        equity_holding_xirr=equity_holding_xirr,
         mf_sips=mf_sips,
     )
 
@@ -267,6 +270,44 @@ def build_mf_fund_xirr_table(
                 "scheme_code": code,
                 "xirr": rate,
                 "sip_count": int((subset["txn_type"] == "sip").sum()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_equity_holding_xirr_table(
+    trades: pd.DataFrame,
+    equity_holdings: pd.DataFrame,
+    *,
+    as_of: date | None = None,
+) -> pd.DataFrame:
+    """Per-stock XIRR from tradebook cash flows and current holding value."""
+
+    if trades.empty or equity_holdings.empty:
+        return pd.DataFrame()
+    as_of = as_of or date.today()
+    rows: list[dict[str, object]] = []
+    for record in equity_holdings.to_dict(orient="records"):
+        symbol = str(record.get("identifier") or record.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        subset = trades[trades["symbol"].astype(str).str.upper() == symbol]
+        if subset.empty:
+            continue
+        terminal = record.get("current_value")
+        rate, _ = compute_portfolio_xirr(
+            subset,
+            mf_transactions=None,
+            equity_terminal_value=float(terminal) if terminal is not None else None,
+            mf_terminal_value=None,
+            as_of=as_of,
+        )
+        trade_count = len(subset)
+        rows.append(
+            {
+                "symbol": symbol,
+                "xirr": rate,
+                "trade_count": trade_count,
             }
         )
     return pd.DataFrame(rows)

@@ -39,6 +39,14 @@ def friendly_import_error(kind: str, detail: str | None = None) -> str:
             "In Zerodha Coin or Console export your **MF transaction / SIP history** "
             "(CSV or Excel) and upload it without editing."
         ),
+        "cas": (
+            "We could not read this CAS file. Use the **original** CAMS/KFintech PDF "
+            "with its password, or a CSV export from a CAS parser tool."
+        ),
+        "mf-disclosure": (
+            "We could not read this portfolio disclosure. Use the monthly Excel/CSV "
+            "from your AMC with ISIN and % to NAV columns (one scheme per file)."
+        ),
     }
     base = guides.get(kind, "We could not import this file. Please use a Zerodha Console export.")
     if detail:
