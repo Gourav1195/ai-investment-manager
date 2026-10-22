@@ -250,6 +250,15 @@ class PortfolioStore:
             for row in latest.to_dict(orient="records")
         }
 
+    def latest_market_data_dates(self) -> tuple[str | None, str | None]:
+        """Return (latest_stock_price_date, latest_nav_date) from SQLite cache."""
+
+        prices = self._read_table("price_cache", order_by="price_date DESC")
+        navs = self._read_table("nav_cache", order_by="nav_date DESC")
+        stock_date = str(prices.iloc[0]["price_date"])[:10] if not prices.empty else None
+        nav_date = str(navs.iloc[0]["nav_date"])[:10] if not navs.empty else None
+        return stock_date, nav_date
+
     def replace_scheme_master(self, frame: pd.DataFrame) -> int:
         imported_at = datetime.now(tz=IST).isoformat()
         with self._connect() as connection:

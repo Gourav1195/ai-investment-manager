@@ -9,5 +9,8 @@ Concise maps of non-obvious behavior in the **India investing Streamlit app** (`
 | Login and remember-me | [auth.md](auth.md) |
 | Research runs and snapshots | [research_pipeline.md](research_pipeline.md) |
 | Tests and CI | [testing_ci.md](testing_ci.md) |
+| Financial goals | [portfolio_goals.md](portfolio_goals.md) |
+| SIP calendar inference | [sip_calendar.md](sip_calendar.md) |
+| Concentration & CSV export | [concentration_and_export.md](concentration_and_export.md) |
 
 Entry points: `streamlit_app.py` → `src/investing/dashboard.py` (`main()`).
