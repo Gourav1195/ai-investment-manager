@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import uuid
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -353,7 +355,20 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         "Update prices & charts", key="portfolio_refresh",
         help="Downloads current prices and history. This can take a minute; otherwise we use saved values.",
     )
-    st.caption("Showing saved values. Update prices & charts when you need fresh market data.")
+    store = PortfolioStore(portfolio_path)
+    stock_as_of, nav_as_of = store.latest_market_data_dates()
+    if stock_as_of or nav_as_of:
+        parts = []
+        if stock_as_of:
+            parts.append(f"stocks {stock_as_of}")
+        if nav_as_of:
+            parts.append(f"MF NAV {nav_as_of}")
+        st.caption(
+            "Cached prices: " + ", ".join(parts) + ". "
+            "Use **Update prices & charts** for today's AMFI / market data."
+        )
+    else:
+        st.caption("Showing saved values. Update prices & charts when you need fresh market data.")
     research_db = research_path if research_path.exists() else None
     try:
         summary, comparison = load_portfolio_summary(
@@ -398,6 +413,8 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
     )
     if summary.xirr_note:
         st.info(summary.xirr_note)
+    _render_portfolio_export(portfolio_path, summary, prefs)
+    _render_investment_goals(summary, prefs)
     if summary.absolute_return_pct is not None:
         st.caption(
             f"Absolute return: {summary.absolute_return_pct * 100:.2f}% "
@@ -416,9 +433,11 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         use_container_width=True,
         hide_index=True,
     )
-    _render_mf_xirr_and_sips(summary)
+    mf_txns = store.list_mf_transactions()
+    _render_mf_xirr_and_sips(summary, mf_txns)
     _render_capital_gains_section(portfolio_path, summary)
     _render_asset_allocation_section(portfolio_path, summary)
+    _render_concentration_section(portfolio_path, summary)
     st.markdown("**Combined allocation**")
     st.dataframe(
         format_holdings_table(summary.combined),
@@ -467,7 +486,7 @@ def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
     reports = load_mf_peer_reports(portfolio_path, sync_master=False, allow_network=False)
     if not summary.mutual_funds.empty:
         render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
-    _render_mf_xirr_and_sips(summary)
+    _render_mf_xirr_and_sips(summary, store.list_mf_transactions())
 
 
 def _render_asset_allocation_section(portfolio_path: Path, summary) -> None:
@@ -548,7 +567,9 @@ def _render_capital_gains_section(portfolio_path: Path, summary) -> None:
         )
 
 
-def _render_mf_xirr_and_sips(summary) -> None:
+def _render_mf_xirr_and_sips(summary, mf_transactions: pd.DataFrame | None = None) -> None:
+    from .portfolio_sip_calendar import infer_sip_schedules, monthly_sip_total, upcoming_sip_dates
+
     fund_xirr = summary.mf_fund_xirr
     if fund_xirr is not None and not fund_xirr.empty:
         display = fund_xirr.copy()
@@ -559,8 +580,190 @@ def _render_mf_xirr_and_sips(summary) -> None:
     sips = summary.mf_sips
     if sips is not None and not sips.empty:
         cols = [c for c in ("txn_date", "scheme_name", "amount", "units", "nav") if c in sips.columns]
-        st.markdown("**SIP instalments**")
+        st.markdown("**SIP instalments (history)**")
         st.dataframe(sips[cols], use_container_width=True, hide_index=True)
+    txn_frame = mf_transactions if mf_transactions is not None else pd.DataFrame()
+    if txn_frame.empty and sips is not None and not sips.empty:
+        txn_frame = sips
+    schedules = infer_sip_schedules(txn_frame)
+    if schedules:
+        upcoming = upcoming_sip_dates(schedules, as_of=date.today(), horizon_days=90)
+        total = monthly_sip_total(schedules)
+        st.markdown("**Upcoming SIP calendar (next 90 days)**")
+        st.caption(
+            f"Inferred from your SIP history — about ₹{total:,.0f}/month across "
+            f"{len(schedules)} fund(s). Dates follow your usual debit day."
+        )
+        if not upcoming.empty:
+            display = upcoming.copy()
+            if "amount_inr" in display.columns:
+                display["amount_inr"] = display["amount_inr"].map(
+                    lambda value: f"₹{float(value):,.0f}"
+                )
+            st.dataframe(display, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No SIP dates fall in the next 90 days.")
+
+
+def _render_investment_goals(summary, prefs: AppPreferences) -> None:
+    from .portfolio_goals import (
+        InvestmentGoal,
+        compute_goal_progress,
+        goal_progress_frame,
+        goals_to_json,
+        parse_goals,
+    )
+    from .portfolio_sip_calendar import infer_sip_schedules, monthly_sip_total
+
+    with st.expander("Financial goals", expanded=False):
+        st.caption(
+            "Track a target amount and date against your whole portfolio. "
+            "Projections use your portfolio XIRR when available, otherwise 10% p.a., "
+            "plus detected monthly SIPs."
+        )
+        stored = parse_goals(prefs.get_investment_goals())
+        current = summary.totals.get("current_value")
+        current_inr = float(current) if current is not None else 0.0
+        mf_sips = summary.mf_sips if summary.mf_sips is not None else pd.DataFrame()
+        monthly_sip = monthly_sip_total(infer_sip_schedules(mf_sips))
+        annual = summary.xirr if summary.xirr is not None else 0.10
+
+        if stored:
+            rows = compute_goal_progress(
+                stored,
+                current_portfolio_inr=current_inr,
+                annual_return=annual,
+                monthly_sip_inr=monthly_sip,
+            )
+            frame = goal_progress_frame(rows)
+            if not frame.empty:
+                display = frame.copy()
+                for col in ("target_inr", "projected_inr", "required_monthly_inr"):
+                    if col in display.columns:
+                        display[col] = display[col].map(
+                            lambda value: f"₹{float(value):,.0f}"
+                            if value is not None and not pd.isna(value)
+                            else "—"
+                        )
+                if "progress_pct" in display.columns:
+                    display["progress_pct"] = display["progress_pct"].map(
+                        lambda value: f"{float(value):.1f}%"
+                    )
+                if "goal_id" in frame.columns:
+                    st.caption("Goal IDs: " + ", ".join(frame["goal_id"].astype(str).tolist()))
+                st.dataframe(display, use_container_width=True, hide_index=True)
+            for row in rows:
+                st.progress(min(1.0, row.progress_pct / 100.0), text=f"{row.name}: {row.status}")
+
+        with st.form("add_investment_goal", clear_on_submit=True):
+            name = st.text_input("Goal name", placeholder="Retirement / child's education")
+            target_inr = st.number_input("Target amount (₹)", min_value=1000.0, step=1000.0)
+            default_date = date.today() + timedelta(days=365 * 5)
+            target_date = st.date_input("Target date", value=default_date)
+            remove_id = st.text_input("Remove goal by ID (optional)", placeholder="leave blank to add")
+            submitted = st.form_submit_button("Save goal")
+        if submitted:
+            goals = list(stored)
+            if remove_id.strip():
+                goals = [goal for goal in goals if goal.goal_id != remove_id.strip()]
+                prefs.set_investment_goals(goals_to_json(goals))
+                st.success("Goal removed.")
+                st.rerun()
+            elif name.strip() and target_inr > 0:
+                goals.append(
+                    InvestmentGoal(
+                        goal_id=str(uuid.uuid4())[:8],
+                        name=name.strip(),
+                        target_inr=float(target_inr),
+                        target_date=target_date,
+                    )
+                )
+                prefs.set_investment_goals(goals_to_json(goals))
+                st.success("Goal saved.")
+                st.rerun()
+
+
+def _render_portfolio_export(portfolio_path: Path, summary, prefs: AppPreferences) -> None:
+    from .portfolio_goals import compute_goal_progress, parse_goals
+    from .portfolio_report_export import build_portfolio_report_zip
+    from .portfolio_sip_calendar import infer_sip_schedules, monthly_sip_total
+
+    store = PortfolioStore(portfolio_path)
+    mf_sips = summary.mf_sips if summary.mf_sips is not None else pd.DataFrame()
+    schedules = infer_sip_schedules(mf_sips)
+    goals = parse_goals(prefs.get_investment_goals())
+    current = summary.totals.get("current_value") or 0.0
+    goal_rows = (
+        compute_goal_progress(
+            goals,
+            current_portfolio_inr=float(current),
+            annual_return=summary.xirr if summary.xirr is not None else 0.10,
+            monthly_sip_inr=monthly_sip_total(schedules),
+        )
+        if goals
+        else None
+    )
+    try:
+        payload = build_portfolio_report_zip(
+            summary,
+            store,
+            goal_rows=goal_rows,
+            sip_schedules=schedules or None,
+        )
+    except Exception:
+        payload = None
+    if payload:
+        st.download_button(
+            "Download portfolio report (ZIP of CSVs)",
+            data=payload,
+            file_name=f"portfolio-report-{date.today().isoformat()}.zip",
+            mime="application/zip",
+            key="portfolio_report_download",
+        )
+
+
+def _render_concentration_section(portfolio_path: Path, summary) -> None:
+    from .portfolio_concentration import build_concentration_tables, mf_category_concentration
+
+    top, insights = build_concentration_tables(summary.combined)
+    if top.empty and not insights:
+        categories = mf_category_concentration(
+            summary.mutual_funds, PortfolioStore(portfolio_path).get_scheme_meta
+        )
+        if categories.empty:
+            return
+    else:
+        categories = mf_category_concentration(
+            summary.mutual_funds, PortfolioStore(portfolio_path).get_scheme_meta
+        )
+    st.markdown("**Concentration & diversification**")
+    if not categories.empty:
+        st.markdown("*Mutual funds by SEBI category (overlap proxy)*")
+        display = categories.copy()
+        if "allocation_pct" in display.columns:
+            display["allocation_pct"] = display["allocation_pct"].map(
+                lambda value: f"{float(value) * 100:.1f}%"
+                if value is not None and not pd.isna(value)
+                else "—"
+            )
+        if "current_value" in display.columns:
+            display["current_value"] = display["current_value"].map(
+                lambda value: f"₹{float(value):,.0f}"
+            )
+        st.dataframe(display, use_container_width=True, hide_index=True)
+    if not top.empty:
+        display = top.copy()
+        if "allocation_pct" in display.columns:
+            display["allocation_pct"] = display["allocation_pct"].map(
+                lambda value: f"{float(value) * 100:.1f}%"
+            )
+        if "current_value" in display.columns:
+            display["current_value"] = display["current_value"].map(
+                lambda value: f"₹{float(value):,.0f}"
+            )
+        st.dataframe(display, use_container_width=True, hide_index=True)
+    for message in insights:
+        st.info(message)
 
 
 def _render_mf_peers_section(portfolio_path: Path) -> None:

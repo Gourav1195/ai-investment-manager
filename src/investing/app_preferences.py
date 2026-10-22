@@ -28,6 +28,17 @@ class AppPreferences:
         data["onboarding_complete"] = bool(value)
         self._write(data)
 
+    def get_investment_goals(self) -> list[dict[str, object]]:
+        raw = self._read().get("investment_goals")
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, dict)]
+
+    def set_investment_goals(self, goals: list[dict[str, object]]) -> None:
+        data = self._read()
+        data["investment_goals"] = goals
+        self._write(data)
+
     def _read(self) -> dict[str, object]:
         if not self.path.exists():
             return {}
