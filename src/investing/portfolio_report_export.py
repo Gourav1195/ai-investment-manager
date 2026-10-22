@@ -35,6 +35,8 @@ def build_portfolio_report_zip(
     }
     if summary.mf_fund_xirr is not None and not summary.mf_fund_xirr.empty:
         buffers["mf_fund_xirr.csv"] = summary.mf_fund_xirr
+    if summary.equity_holding_xirr is not None and not summary.equity_holding_xirr.empty:
+        buffers["equity_holding_xirr.csv"] = summary.equity_holding_xirr
     if summary.mf_sips is not None and not summary.mf_sips.empty:
         buffers["sip_history.csv"] = summary.mf_sips
 

@@ -13,7 +13,7 @@ import pandas as pd
 
 from .filings import IST
 
-PORTFOLIO_STORE_VERSION = 3
+PORTFOLIO_STORE_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -449,6 +449,85 @@ class PortfolioStore:
                 params=(scheme_code,),
             )
 
+    def replace_mf_disclosure_holdings(
+        self,
+        scheme_code: str,
+        as_of: str,
+        frame: pd.DataFrame,
+        *,
+        source: str,
+        import_key: str,
+    ) -> int:
+        code = str(scheme_code).strip()
+        if not code:
+            raise ValueError("scheme_code is required for portfolio disclosure holdings.")
+        imported_at = datetime.now(tz=IST).isoformat()
+        rows = 0
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM mf_disclosure_holdings WHERE scheme_code = ? AND as_of = ?",
+                (code, as_of),
+            )
+            for record in frame.to_dict(orient="records"):
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO mf_disclosure_holdings (
+                        scheme_code, as_of, isin, security_name, pct_nav, instrument_type,
+                        source, import_key, imported_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        code,
+                        as_of,
+                        str(record["isin"]).strip().upper(),
+                        str(record.get("security_name") or record["isin"]),
+                        float(record["pct_nav"]),
+                        _optional_str(record.get("instrument_type")),
+                        source,
+                        import_key,
+                        imported_at,
+                    ),
+                )
+                rows += 1
+        return rows
+
+    def get_mf_disclosure_holdings(self, scheme_code: str, *, as_of: str | None = None) -> pd.DataFrame:
+        code = str(scheme_code).strip()
+        with self._connect() as connection:
+            if as_of:
+                return pd.read_sql_query(
+                    """
+                    SELECT isin, security_name, pct_nav, instrument_type, as_of
+                    FROM mf_disclosure_holdings
+                    WHERE scheme_code = ? AND as_of = ?
+                    ORDER BY pct_nav DESC
+                    """,
+                    connection,
+                    params=(code, as_of),
+                )
+            return pd.read_sql_query(
+                """
+                SELECT isin, security_name, pct_nav, instrument_type, as_of
+                FROM mf_disclosure_holdings
+                WHERE scheme_code = ?
+                ORDER BY as_of DESC, pct_nav DESC
+                """,
+                connection,
+                params=(code,),
+            )
+
+    def list_mf_disclosure_scheme_codes(self) -> list[str]:
+        frame = self._read_table("mf_disclosure_holdings")
+        if frame.empty:
+            return []
+        return sorted(frame["scheme_code"].astype(str).unique().tolist())
+
+    def latest_disclosure_as_of(self, scheme_code: str) -> str | None:
+        frame = self.get_mf_disclosure_holdings(scheme_code)
+        if frame.empty:
+            return None
+        return str(frame.iloc[0]["as_of"])[:10]
+
     def _read_table(self, table: str, order_by: str = "rowid") -> pd.DataFrame:
         with self._connect() as connection:
             return pd.read_sql_query(
@@ -569,6 +648,19 @@ class PortfolioStore:
                     plan_type TEXT,
                     option_type TEXT,
                     updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mf_disclosure_holdings (
+                    scheme_code TEXT NOT NULL,
+                    as_of TEXT NOT NULL,
+                    isin TEXT NOT NULL,
+                    security_name TEXT NOT NULL,
+                    pct_nav REAL NOT NULL,
+                    instrument_type TEXT,
+                    source TEXT NOT NULL,
+                    import_key TEXT NOT NULL,
+                    imported_at TEXT NOT NULL,
+                    PRIMARY KEY (scheme_code, as_of, isin)
                 );
                 """
             )

@@ -12,8 +12,11 @@ Zerodha exports label recurring purchases as `SIP` in MF transaction history. Th
 
 The Portfolio page shows the next **90 days** in **Upcoming SIP calendar**. Amounts are indicative (median of history).
 
+## Change detection & overrides
+
+See [sip_change_detection.md](sip_change_detection.md). Recent amount/day shifts are flagged; manual overrides in `ui_prefs.json` override inferred schedules for the calendar and goals.
+
 ## Limitations
 
-- Paused or changed SIP amounts are not detected automatically; new history updates the median.
-- Funds with only lump-sum `Purchase` rows do not appear in the calendar.
+- Funds with only lump-sum `Purchase` rows do not appear in the calendar unless you add a manual override.
 - Equity SIPs (if exported separately) are out of scope until parsed into the same table.

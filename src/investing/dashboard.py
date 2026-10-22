@@ -427,6 +427,16 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         use_container_width=True,
         hide_index=True,
     )
+    equity_xirr = summary.equity_holding_xirr
+    if equity_xirr is not None and not equity_xirr.empty:
+        display = equity_xirr.copy()
+        if "xirr" in display.columns:
+            display["xirr"] = display["xirr"].map(_format_xirr)
+        st.markdown("**Per-stock annual return (XIRR)**")
+        st.caption("Uses your tradebook cash flows and saved market prices.")
+        st.dataframe(display, use_container_width=True, hide_index=True)
+    elif not store.list_equity_trades().empty:
+        st.caption("Per-stock XIRR needs current prices — use **Update prices & charts**.")
     st.markdown("**Mutual funds (Coin)**")
     st.dataframe(
         format_holdings_table(summary.mutual_funds),
@@ -434,10 +444,11 @@ def _render_portfolio(portfolio_path: Path, research_path: Path, prefs: AppPrefe
         hide_index=True,
     )
     mf_txns = store.list_mf_transactions()
-    _render_mf_xirr_and_sips(summary, mf_txns)
+    _render_mf_xirr_and_sips(summary, mf_txns, prefs)
     _render_capital_gains_section(portfolio_path, summary)
     _render_asset_allocation_section(portfolio_path, summary)
     _render_concentration_section(portfolio_path, summary)
+    _render_mf_overlap_section(portfolio_path, summary)
     st.markdown("**Combined allocation**")
     st.dataframe(
         format_holdings_table(summary.combined),
@@ -486,7 +497,11 @@ def _render_mutual_funds_charts_only(portfolio_path: Path) -> None:
     reports = load_mf_peer_reports(portfolio_path, sync_master=False, allow_network=False)
     if not summary.mutual_funds.empty:
         render_mutual_fund_charts(portfolio_path, summary.mutual_funds, reports)
-    _render_mf_xirr_and_sips(summary, store.list_mf_transactions())
+    from .app_preferences import AppPreferences
+    from .repo_bootstrap import default_work_dir
+
+    prefs = AppPreferences(default_work_dir() / "ui_prefs.json")
+    _render_mf_xirr_and_sips(summary, store.list_mf_transactions(), prefs)
 
 
 def _render_asset_allocation_section(portfolio_path: Path, summary) -> None:
@@ -567,8 +582,20 @@ def _render_capital_gains_section(portfolio_path: Path, summary) -> None:
         )
 
 
-def _render_mf_xirr_and_sips(summary, mf_transactions: pd.DataFrame | None = None) -> None:
-    from .portfolio_sip_calendar import infer_sip_schedules, monthly_sip_total, upcoming_sip_dates
+def _render_mf_xirr_and_sips(
+    summary,
+    mf_transactions: pd.DataFrame | None = None,
+    prefs: AppPreferences | None = None,
+) -> None:
+    from .portfolio_sip_calendar import (
+        SipScheduleOverride,
+        detect_sip_changes,
+        monthly_sip_total,
+        overrides_to_json,
+        parse_sip_overrides,
+        resolve_sip_schedules,
+        upcoming_sip_dates,
+    )
 
     fund_xirr = summary.mf_fund_xirr
     if fund_xirr is not None and not fund_xirr.empty:
@@ -585,7 +612,41 @@ def _render_mf_xirr_and_sips(summary, mf_transactions: pd.DataFrame | None = Non
     txn_frame = mf_transactions if mf_transactions is not None else pd.DataFrame()
     if txn_frame.empty and sips is not None and not sips.empty:
         txn_frame = sips
-    schedules = infer_sip_schedules(txn_frame)
+    overrides = parse_sip_overrides(prefs.get_sip_schedule_overrides()) if prefs else []
+    schedules = resolve_sip_schedules(txn_frame, overrides)
+    changes = detect_sip_changes(txn_frame)
+    if not changes.empty:
+        st.markdown("**SIP changes detected**")
+        st.dataframe(changes, use_container_width=True, hide_index=True)
+    if prefs is not None:
+        with st.expander("Manual SIP schedule overrides", expanded=False):
+            st.caption(
+                "Override inferred debit day or amount for calendar and goal projections. "
+                "Disable an override to fall back to history."
+            )
+            if overrides:
+                st.dataframe(pd.DataFrame(overrides_to_json(overrides)), hide_index=True)
+            with st.form("sip_override_form", clear_on_submit=True):
+                scheme_name = st.text_input("Fund name (must match holdings)")
+                scheme_code = st.text_input("AMFI code (optional)")
+                day = st.number_input("Debit day of month", min_value=1, max_value=31, value=1)
+                amount = st.number_input("Monthly amount (₹)", min_value=100.0, step=100.0)
+                remove = st.checkbox("Remove override for this fund")
+                if st.form_submit_button("Save SIP override"):
+                    key_name = scheme_name.strip().casefold()
+                    updated = [o for o in overrides if o.scheme_name.casefold() != key_name]
+                    if not remove and scheme_name.strip():
+                        updated.append(
+                            SipScheduleOverride(
+                                scheme_code=scheme_code.strip() or None,
+                                scheme_name=scheme_name.strip(),
+                                day_of_month=int(day),
+                                amount_inr=float(amount),
+                                enabled=True,
+                            )
+                        )
+                    prefs.set_sip_schedule_overrides(overrides_to_json(updated))
+                    st.rerun()
     if schedules:
         upcoming = upcoming_sip_dates(schedules, as_of=date.today(), horizon_days=90)
         total = monthly_sip_total(schedules)
@@ -625,7 +686,12 @@ def _render_investment_goals(summary, prefs: AppPreferences) -> None:
         current = summary.totals.get("current_value")
         current_inr = float(current) if current is not None else 0.0
         mf_sips = summary.mf_sips if summary.mf_sips is not None else pd.DataFrame()
-        monthly_sip = monthly_sip_total(infer_sip_schedules(mf_sips))
+        from .portfolio_sip_calendar import parse_sip_overrides, resolve_sip_schedules
+
+        txn = summary.mf_sips if summary.mf_sips is not None else pd.DataFrame()
+        monthly_sip = monthly_sip_total(
+            resolve_sip_schedules(txn, parse_sip_overrides(prefs.get_sip_schedule_overrides()))
+        )
         annual = summary.xirr if summary.xirr is not None else 0.10
 
         if stored:
@@ -690,7 +756,9 @@ def _render_portfolio_export(portfolio_path: Path, summary, prefs: AppPreference
 
     store = PortfolioStore(portfolio_path)
     mf_sips = summary.mf_sips if summary.mf_sips is not None else pd.DataFrame()
-    schedules = infer_sip_schedules(mf_sips)
+    from .portfolio_sip_calendar import parse_sip_overrides, resolve_sip_schedules
+
+    schedules = resolve_sip_schedules(mf_sips, parse_sip_overrides(prefs.get_sip_schedule_overrides()))
     goals = parse_goals(prefs.get_investment_goals())
     current = summary.totals.get("current_value") or 0.0
     goal_rows = (
@@ -764,6 +832,51 @@ def _render_concentration_section(portfolio_path: Path, summary) -> None:
         st.dataframe(display, use_container_width=True, hide_index=True)
     for message in insights:
         st.info(message)
+
+
+def _render_mf_overlap_section(portfolio_path: Path, summary) -> None:
+    from .mf_overlap import compute_pairwise_overlap, top_shared_holdings
+
+    store = PortfolioStore(portfolio_path)
+    held_codes = [
+        str(row.get("scheme_code") or "").strip()
+        for row in summary.mutual_funds.to_dict(orient="records")
+        if row.get("scheme_code")
+    ]
+    disclosure_codes = store.list_mf_disclosure_scheme_codes()
+    codes = sorted({code for code in held_codes if code} & set(disclosure_codes))
+    if len(codes) < 2:
+        if held_codes:
+            st.markdown("**Stock-level fund overlap**")
+            st.caption(
+                "Upload monthly **portfolio disclosure** files (Import & backup) for at least two "
+                "of your funds to see shared equity holdings. There is no reliable free bulk API "
+                "for all AMC portfolios — files come from each AMC or AMFI."
+            )
+        return
+    holdings_by_scheme: dict[str, pd.DataFrame] = {}
+    for code in codes:
+        as_of = store.latest_disclosure_as_of(code)
+        frame = store.get_mf_disclosure_holdings(code, as_of=as_of)
+        if not frame.empty:
+            holdings_by_scheme[code] = frame
+    overlap = compute_pairwise_overlap(holdings_by_scheme)
+    if overlap.empty:
+        return
+    st.markdown("**Stock-level fund overlap**")
+    st.caption(
+        "From uploaded SEBI monthly disclosures. Overlap % ≈ sum of min(weight) for shared ISINs."
+    )
+    display = overlap.copy()
+    display["overlap_pct"] = display["overlap_pct"].map(lambda value: f"{float(value) * 100:.1f}%")
+    st.dataframe(display, use_container_width=True, hide_index=True)
+    top_pair = overlap.iloc[0]
+    left = store.get_mf_disclosure_holdings(str(top_pair["scheme_a"]))
+    right = store.get_mf_disclosure_holdings(str(top_pair["scheme_b"]))
+    shared = top_shared_holdings(left, right)
+    if not shared.empty:
+        st.markdown("*Top shared holdings (highest overlap pair)*")
+        st.dataframe(shared, use_container_width=True, hide_index=True)
 
 
 def _render_mf_peers_section(portfolio_path: Path) -> None:

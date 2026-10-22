@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
+from .filings import IST
 from .kite_client import KiteReadOnlyClient
 from .kite_config import KiteCredentials, load_kite_credentials
 from .portfolio_store import PortfolioStore
+from .cas_import import parse_cas_pdf, parse_cas_transactions_table
+from .mf_portfolio_disclosure import parse_portfolio_disclosure
 from .zerodha_import import (
     parse_equity_holdings,
     parse_mf_holdings,
@@ -112,6 +116,77 @@ def import_mf_transactions_file(
         source=source,
         import_key=import_key,
         replace_existing=replace_existing,
+    )
+
+
+def import_cas_transactions_file(
+    store: PortfolioStore,
+    path: Path,
+    *,
+    password: str | None = None,
+    source: str = "cas",
+    replace_existing: bool = False,
+) -> int:
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        if not password:
+            raise ValueError("CAS PDF import requires the PDF password.")
+        frame = parse_cas_pdf(path, password)
+    else:
+        frame = parse_cas_transactions_table(path)
+    if source != "example":
+        _clear_legacy_demo_data(store)
+    import_key = store.record_import(
+        source=source,
+        kind="cas_transactions",
+        file_name=path.name,
+        row_count=len(frame),
+    )
+    return store.append_mf_transactions(
+        frame,
+        source=source,
+        import_key=import_key,
+        replace_existing=replace_existing,
+    )
+
+
+def import_mf_portfolio_disclosure_file(
+    store: PortfolioStore,
+    path: Path,
+    *,
+    scheme_code: str | None = None,
+    source: str = "mf_disclosure",
+) -> int:
+    frame, as_of = parse_portfolio_disclosure(path)
+    codes = (
+        {str(value).strip() for value in frame["scheme_code"].dropna().tolist() if str(value).strip()}
+        if "scheme_code" in frame.columns
+        else set()
+    )
+    if scheme_code:
+        codes = {str(scheme_code).strip()}
+    if len(codes) > 1:
+        raise ValueError("Upload one scheme per disclosure file (multiple scheme codes found).")
+    code = next(iter(codes)) if codes else None
+    if not code:
+        raise ValueError(
+            "Could not determine AMFI scheme code. Add a Scheme Code column or pass scheme_code=."
+        )
+    as_of_date = as_of or datetime.now(tz=IST).date().isoformat()
+    if source != "example":
+        _clear_legacy_demo_data(store)
+    import_key = store.record_import(
+        source=source,
+        kind="mf_portfolio_disclosure",
+        file_name=path.name,
+        row_count=len(frame),
+    )
+    return store.replace_mf_disclosure_holdings(
+        code,
+        as_of_date,
+        frame,
+        source=source,
+        import_key=import_key,
     )
 
 
