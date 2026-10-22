@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Legacy full-dashboard tour. For CI smoke tests use scripts/e2e_ui_verify.py instead.
 """Drive the Streamlit dashboard in a real browser and save tab screenshots."""
 
 from __future__ import annotations

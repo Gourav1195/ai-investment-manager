@@ -33,6 +33,7 @@ def test_authenticated_run_emits_cookie(monkeypatch):
     from src.investing import cloud_auth
     monkeypatch.setattr(cloud_auth.st, 'session_state', {'app_password_ok': True, '_remember_token': 'token'})
     monkeypatch.setattr(cloud_auth, 'is_cloud_persistence_configured', lambda: False)
+    monkeypatch.setattr(cloud_auth, 'is_streamlit_community_cloud', lambda: False)
     monkeypatch.setattr(cloud_auth, '_configured_password', lambda: 'secret')
     writer = Mock()
     monkeypatch.setattr(cloud_auth, 'write_remember_cookie', writer)

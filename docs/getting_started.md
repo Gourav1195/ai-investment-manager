@@ -17,7 +17,7 @@ You can use this app from your browser. You do not need Python, database setting
 
 A holdings upload replaces the holdings of that type. A trade-history upload replaces the previous
 trade history, so upload the full period you want to analyse. Download a backup first if you want
-to keep the previous version. The default demo is kept in its own database. Switching to the demo does not replace your real holdings.
+to keep the previous version. Example data lives in a separate demo database until you upload real holdings; uploads replace example data in your personal database.
 
 ## Find and compare funds
 

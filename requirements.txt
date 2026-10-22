@@ -1,17 +1,17 @@
 # Lightweight stack for India investing + Streamlit dashboard (Python 3.12–3.14).
-# Streamlit Community Cloud installs this file by default.
-numpy>=1.24.0
-pandas>=2.0.0
-requests>=2.31.0
-yfinance>=0.2.0
-python-dotenv>=1.0.0
-streamlit>=1.52.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-openpyxl>=3.1.0
-lxml>=4.9.0
-typing-extensions>=4.8.0
-plotly>=5.18.0
-graphviz>=0.20.1
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
+# Pinned to versions exercised in CI (Streamlit Community Cloud installs this file).
+numpy>=1.26.4,<3
+pandas>=2.2.0,<3.1
+requests>=2.31.0,<3
+yfinance>=0.2.40,<1
+python-dotenv>=1.0.0,<2
+streamlit>=1.52.0,<1.66
+pydantic>=2.5.0,<3
+pydantic-settings>=2.1.0,<3
+openpyxl>=3.1.0,<4
+lxml>=4.9.0,<7
+typing-extensions>=4.8.0,<5
+plotly>=5.18.0,<7
+graphviz>=0.20.1,<1
+sqlalchemy>=2.0.0,<2.2
+psycopg2-binary>=2.9.0,<3

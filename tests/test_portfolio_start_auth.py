@@ -62,6 +62,7 @@ def test_browser_token_restores_when_server_cookie_missing(monkeypatch):
     monkeypatch.setattr(st, "query_params", {})
     monkeypatch.setattr(cloud_auth, "_configured_password", lambda: "test-password")
     monkeypatch.setattr(cloud_auth, "is_cloud_persistence_configured", lambda: False)
+    monkeypatch.setattr(cloud_auth, "is_streamlit_community_cloud", lambda: False)
     monkeypatch.setattr(cloud_auth, "read_remember_cookie", lambda: None)
     monkeypatch.setattr(
         cloud_auth, "render_browser_auth", lambda **kw: {"token": token, "available": True}
@@ -86,6 +87,7 @@ def test_invalid_browser_token_cannot_authenticate(monkeypatch):
     monkeypatch.setattr(st, "query_params", {})
     monkeypatch.setattr(cloud_auth, "_configured_password", lambda: "test-password")
     monkeypatch.setattr(cloud_auth, "is_cloud_persistence_configured", lambda: False)
+    monkeypatch.setattr(cloud_auth, "is_streamlit_community_cloud", lambda: False)
     monkeypatch.setattr(cloud_auth, "read_remember_cookie", lambda: None)
     bridge = Mock(return_value={"token": "tampered"})
     monkeypatch.setattr(cloud_auth, "render_browser_auth", bridge)

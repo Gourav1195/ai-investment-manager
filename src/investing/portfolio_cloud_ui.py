@@ -14,10 +14,8 @@ from .portfolio_service import (
     import_mf_holdings_file,
     import_mf_transactions_file,
     import_tradebook_file,
-    load_example_portfolio,
 )
 from .portfolio_store import PortfolioStore
-from .portfolio_dashboard_data import portfolio_has_data
 
 
 def render_portfolio_import_panel(portfolio_path: Path, *, compact: bool = False) -> None:

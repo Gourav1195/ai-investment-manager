@@ -56,12 +56,19 @@ from .royal_theme import (
     render_welcome_header,
     render_wealth_hero,
 )
-from .cloud_persistence import sync_session_cloud_data
-from .cloud_persistence_ui import render_data_persistence_badge
+from .cloud_persistence import PersistenceMode, sync_session_cloud_data
+from .cloud_persistence_ui import render_data_persistence_badge, render_main_persistence_banner
 from .ui_research import render_database_backup_panel, render_run_research_controls
 from .wealth_insights import load_wealth_snapshot, plain_english_insights
 from .about_ui import render_about_section
 from .sidebar_nav import render_sidebar_section_menu
+from .portfolio_start import (
+    render_demo_data_banner,
+    render_get_started_actions,
+    render_start_setup,
+    selected_portfolio_path,
+    using_demo_portfolio,
+)
 
 DEFAULT_DATABASE = Path("work/research.db")
 DEFAULT_PORTFOLIO_DATABASE = Path("work/portfolio.db")
@@ -103,8 +110,12 @@ def _run_dashboard() -> None:
 
     with st.sidebar:
         st.markdown(
-            '<div class="royal-sidebar-brand"><strong>Wealth home</strong>'
-            '<p>Your investments, clearly.</p></div>', unsafe_allow_html=True,
+            '<div class="royal-sidebar-brand">'
+            '<div class="royal-sidebar-brand-text">'
+            "<strong>Wealth home</strong>"
+            "<p>Your investments, clearly.</p>"
+            "</div></div>",
+            unsafe_allow_html=True,
         )
         active_section = render_sidebar_section_menu()
         st.divider()
@@ -122,13 +133,6 @@ def _run_dashboard() -> None:
     maybe_auto_load_demo_for_qa(portfolio_path, prefs)
 
     personal_portfolio_path = portfolio_path
-    from .portfolio_start import (
-        render_demo_data_banner,
-        render_get_started_actions,
-        render_start_setup,
-        selected_portfolio_path,
-        using_demo_portfolio,
-    )
 
     portfolio_path = selected_portfolio_path(personal_portfolio_path, work_dir)
 
@@ -144,6 +148,8 @@ def _run_dashboard() -> None:
             render_data_persistence_badge(persistence)
             render_term_glossary()
         st.caption("For tracking and research. Not investment advice.")
+
+    render_main_persistence_banner(persistence)
 
     if active_section in {"Dashboard", "Portfolio", "My mutual funds", "MF peers"} and using_demo_portfolio(
         personal_portfolio_path
@@ -209,8 +215,21 @@ def _run_dashboard() -> None:
             '<h3 class="royal-section-title">Run research</h3>',
             unsafe_allow_html=True,
         )
+        st.caption(
+            "Start a scoring run here. When it completes, your latest snapshots appear below. "
+            "Use **Saved research** in the sidebar to filter older runs and compare views."
+        )
         if render_run_research_controls(database_path, key_prefix="main_research"):
             st.rerun()
+        if store is not None:
+            st.divider()
+            st.markdown("**Latest saved snapshots**")
+            _render_research_snapshots(
+                store,
+                options,
+                key_prefix="run_research_results",
+                include_run_controls=False,
+            )
     elif active_section == "Import & backup":
         st.markdown(
             '<h3 class="royal-section-title">Import & backup</h3>',
@@ -233,36 +252,57 @@ def _render_snapshots_tab(
     options: dict[str, list],
 ) -> None:
     st.markdown('<h3 class="royal-section-title">Saved research</h3>', unsafe_allow_html=True)
-    st.caption("Long-term stock scores from the walk-forward research pipeline.")
-
-    symbol = st.selectbox(
-        "Symbol filter",
-        ["All"] + options["symbols"],
-        index=0,
-        key="research_symbol_filter",
-    )
-    as_of = st.selectbox(
-        "As-of date filter",
-        ["All"] + options["as_of_dates"],
-        index=0,
-        key="research_asof_filter",
-    )
-    research_view = st.selectbox(
-        "Research view filter",
-        ["All"] + options["research_views"],
-        index=0,
-        key="research_view_filter",
+    st.caption(
+        "Your research library: every run from **Run research** is stored here. "
+        "Filter by symbol, as-of date, or research view, then open a row for score drivers and fundamentals."
     )
 
     if store is None:
         render_empty_state(
             "📈",
             "No research saved yet",
-            "Use Run research in the sidebar, then return here.",
+            "Go to **Run research** in the sidebar to score your first stock list. "
+            "Results will appear there and in this library.",
         )
         if render_run_research_controls(database_path, key_prefix="snapshots"):
             st.rerun()
         return
+
+    _render_research_snapshots(
+        store,
+        options,
+        key_prefix="saved_research",
+        include_run_controls=True,
+        database_path=database_path,
+    )
+
+
+def _render_research_snapshots(
+    store: ResearchStore,
+    options: dict[str, list],
+    *,
+    key_prefix: str,
+    include_run_controls: bool,
+    database_path: Path | None = None,
+) -> None:
+    symbol = st.selectbox(
+        "Symbol filter",
+        ["All"] + options["symbols"],
+        index=0,
+        key=f"{key_prefix}_symbol_filter",
+    )
+    as_of = st.selectbox(
+        "As-of date filter",
+        ["All"] + options["as_of_dates"],
+        index=0,
+        key=f"{key_prefix}_asof_filter",
+    )
+    research_view = st.selectbox(
+        "Research view filter",
+        ["All"] + options["research_views"],
+        index=0,
+        key=f"{key_prefix}_view_filter",
+    )
 
     metrics = overview_metrics(store)
     _render_overview(metrics)
@@ -279,10 +319,11 @@ def _render_snapshots_tab(
         render_empty_state(
             "🔍",
             "No snapshots match your filters",
-            "Adjust filters above or run research again from the sidebar.",
+            "Adjust the filters above or run research again from **Run research**.",
         )
-        if render_run_research_controls(database_path, key_prefix="snapshots_empty"):
-            st.rerun()
+        if include_run_controls and database_path is not None:
+            if render_run_research_controls(database_path, key_prefix=f"{key_prefix}_empty"):
+                st.rerun()
         return
 
     st.dataframe(summary, use_container_width=True, hide_index=True)

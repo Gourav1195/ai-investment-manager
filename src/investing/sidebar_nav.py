@@ -31,6 +31,11 @@ DISPLAY_LABELS = {
     "Orchestration": "Research runs",
 }
 
+NAV_HELP = {
+    "Run research": "Score a stock list and save snapshots to your database.",
+    "Snapshots": "Browse, filter, and inspect saved research snapshots.",
+}
+
 # Preserve the existing routing labels and compatibility export.
 SIDEBAR_SECTIONS = (
     "Dashboard", "Portfolio", "My mutual funds", "Top mutual funds", "MF peers",
@@ -44,6 +49,7 @@ TOP_LEVEL_TABS = tuple(
 def _select_section(section: str) -> None:
     st.session_state["active_section"] = section
 
+
 def render_sidebar_section_menu() -> str:
     """Render native keyboard-accessible buttons without nested scrolling."""
     if st.session_state.get("active_section") not in SIDEBAR_SECTIONS:
@@ -55,11 +61,16 @@ def render_sidebar_section_menu() -> str:
                 f'<p class="royal-nav-group">{group}</p>', unsafe_allow_html=True
             )
             for label, icon in items:
+                display = DISPLAY_LABELS.get(label, label)
                 st.button(
-                    DISPLAY_LABELS.get(label, label), icon=icon, key=f"nav_{label}",
+                    display,
+                    icon=icon,
+                    key=f"nav_{label}",
                     type="primary" if active == label else "secondary",
                     use_container_width=True,
-                    on_click=_select_section, args=(label,),
-                    help=f"Current page: {label}" if active == label else None,
+                    on_click=_select_section,
+                    args=(label,),
+                    help=NAV_HELP.get(label)
+                    or (f"Current page: {display}" if active == label else None),
                 )
     return active
